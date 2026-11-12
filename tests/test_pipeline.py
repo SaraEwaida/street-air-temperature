@@ -180,7 +180,6 @@ def test_download_rejects_non_csv(tmp_path, monkeypatch):
             pass
 
     monkeypatch.setattr(requests, "get", lambda *a, **k: Resp())
-    with pytest.raises(RuntimeError, match="did not return ISD CSV"):
-        isd.download("72278023183", 2023, tmp_path)
+    assert isd.download("72278023183", 2023, tmp_path) is None    # HTML page = no data, skipped
     assert not list(tmp_path.iterdir())                          # nothing bad cached
     assert isd._looks_like_isd('﻿"STATION","DATE"')

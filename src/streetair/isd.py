@@ -45,7 +45,7 @@ def list_stations(cfg: dict[str, Any], text: str | None = None) -> pd.DataFrame:
 
 
 def download(station: str, year: int, cache_dir: str | Path) -> Path | None:
-    """Cached download of one station-year; None if NOAA has no file for it."""
+    """Cached download of one station-year; None if NOAA has no CSV for it."""
     import requests
 
     path = Path(cache_dir) / f"{station}_{year}.csv"
@@ -57,7 +57,8 @@ def download(station: str, year: int, cache_dir: str | Path) -> Path | None:
         return None
     r.raise_for_status()
     if not _looks_like_isd(r.text[:300]):
-        raise RuntimeError(f"{url} did not return ISD CSV data. First characters received:\n{r.text[:300]!r}")
+        # NCEI answers some missing station-years with an HTML page and status 200
+        return None
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(r.text)
     return path

@@ -23,9 +23,11 @@ def _stations(cfg):
         for y in years:
             path = isd.download(s.station, y, raw_dir)
             if path is None:
-                print(f"  {s.station} {s.name}: no {y} file")
+                print(f"  {s.station} {s.name}: no {y} data at NOAA, skipped")
                 continue
             frames.append(isd.parse_hourly(path))
+    if not frames:
+        raise RuntimeError("NOAA returned no station data; open one URL from isd.DATA_URL in a browser to check access")
     obs = pd.concat(frames, ignore_index=True)
     obs = obs[obs.time.between(pd.Timestamp(cfg["period"]["start"], tz="UTC"),
                                pd.Timestamp(cfg["period"]["end"], tz="UTC") + pd.Timedelta(hours=23))]
