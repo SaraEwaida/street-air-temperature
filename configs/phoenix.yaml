@@ -1,0 +1,33 @@
+# Phoenix metropolitan area: downtown, Tempe, Mesa, Scottsdale, Glendale, Goodyear and the desert edge.
+city: phoenix
+bbox: [-112.60, 33.20, -111.50, 33.80]   # lon_min, lat_min, lon_max, lat_max (WGS84)
+crs: EPSG:32612                           # UTM 12N, metres, for buffers and maps
+
+period:
+  start: "2023-01-01"
+  end: "2023-12-31"
+
+stations:
+  source: noaa-isd                        # NOAA Integrated Surface Database, global-hourly
+  min_coverage: 0.7                       # keep stations with >= 70% of hours after QC
+  valid_range_c: [-15, 55]                # plausible air temperature range for Phoenix
+  max_step_c: 8                           # max change from both neighbouring hours (spike filter)
+
+era5:
+  model: era5                             # 0.25 deg (~25 km) reanalysis, the coarse input
+  raw_grid_cell: true                     # elevation=nan: no lapse-rate adjustment by the API
+
+features:
+  radii_m: [100, 500]                     # land-cover and NDVI context around each station
+  ndvi_period: ["2023-05-01", "2023-09-30"]
+  ndvi_max_cloud: 10
+  ndvi_scenes: 5                          # median NDVI over up to 5 clear Landsat scenes
+
+paths:
+  stations: data/phoenix/stations.csv
+  observations: data/phoenix/observations.parquet
+  era5: data/phoenix/era5.parquet
+  features: data/phoenix/site_features.csv
+  dataset: data/phoenix/dataset.parquet
+  station_summary: outputs/station_summary.csv
+  station_map: outputs/figures/phoenix_stations.png

@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+
+# Data is reproducible from the config; keep it out of git
+data/
+outputs/*
+!outputs/figures/
+outputs/figures/*
+!outputs/figures/.gitkeep
+!outputs/*.csv
+!outputs/*.json
