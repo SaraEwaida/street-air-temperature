@@ -15,7 +15,9 @@ import numpy as np
 import pandas as pd
 
 STATION_LIST_URL = "https://www.ncei.noaa.gov/pub/data/noaa/isd-history.csv"
-DATA_URL = "https://www.ncei.noaa.gov/data/global-hourly/access/{year}/{station}.csv"
+# NCEI ended direct HTTPS download of ISD CSV in 2026; the same files are served by NOAA's
+# Open Data Dissemination (NODD) program on AWS S3, no account needed.
+DATA_URL = "https://noaa-global-hourly-pds.s3.amazonaws.com/{year}/{station}.csv"
 
 BAD_QUALITY = {"2", "3", "6", "7"}
 REPORT_PRIORITY = {"FM-15": 0, "FM-12": 1, "FM-16": 2, "SAO": 3}   # others are ignored
@@ -53,7 +55,7 @@ def download(station: str, year: int, cache_dir: str | Path) -> Path | None:
         return path
     url = DATA_URL.format(year=year, station=station)
     r = requests.get(url, timeout=300, headers={"User-Agent": "street-air-temperature (research)"})
-    if r.status_code == 404:
+    if r.status_code in (403, 404):        # S3 answers a missing key with 403/404
         return None
     r.raise_for_status()
     if not _looks_like_isd(r.text[:300]):
