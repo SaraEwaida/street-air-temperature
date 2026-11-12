@@ -49,15 +49,22 @@ def download(station: str, year: int, cache_dir: str | Path) -> Path | None:
     import requests
 
     path = Path(cache_dir) / f"{station}_{year}.csv"
-    if path.exists():
+    if path.exists() and _looks_like_isd(path.read_text(errors="replace")[:300]):
         return path
-    r = requests.get(DATA_URL.format(year=year, station=station), timeout=300)
+    url = DATA_URL.format(year=year, station=station)
+    r = requests.get(url, timeout=300, headers={"User-Agent": "street-air-temperature (research)"})
     if r.status_code == 404:
         return None
     r.raise_for_status()
+    if not _looks_like_isd(r.text[:300]):
+        raise RuntimeError(f"{url} did not return ISD CSV data. First characters received:\n{r.text[:300]!r}")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(r.text)
     return path
+
+
+def _looks_like_isd(head: str) -> bool:
+    return head.lstrip("\ufeff").startswith('"STATION"')
 
 
 def parse_hourly(source: str | Path | io.StringIO) -> pd.DataFrame:

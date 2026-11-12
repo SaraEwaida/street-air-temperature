@@ -168,3 +168,19 @@ def test_dataset_build_summary_and_map(tmp_path):
     assert s.loc["A", "era5_bias_c"] == pytest.approx(-3.0) and s.loc["B", "era5_bias_c"] == pytest.approx(-1.0)
     png = station_map(s.reset_index(), st, CFG, tmp_path / "map.png")
     assert png.exists() and png.stat().st_size > 5000
+
+
+def test_download_rejects_non_csv(tmp_path, monkeypatch):
+    import requests
+
+    class Resp:
+        status_code, text = 200, "<html><body>Service notice</body></html>"
+
+        def raise_for_status(self):
+            pass
+
+    monkeypatch.setattr(requests, "get", lambda *a, **k: Resp())
+    with pytest.raises(RuntimeError, match="did not return ISD CSV"):
+        isd.download("72278023183", 2023, tmp_path)
+    assert not list(tmp_path.iterdir())                          # nothing bad cached
+    assert isd._looks_like_isd('﻿"STATION","DATE"')

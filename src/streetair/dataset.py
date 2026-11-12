@@ -17,7 +17,7 @@ def build(obs: pd.DataFrame, era5: pd.DataFrame, stations: pd.DataFrame, feats: 
     df = df.merge(feats, on="station", how="left")
     local = df.time.dt.tz_convert(LOCAL_TZ)
     df["hour_local"] = local.dt.hour
-    df["doy"] = local.dt.dayofyear
+    df["doy"] = local.dt.day_of_year
     df["month"] = local.dt.month
     df["is_night"] = ~df.hour_local.between(7, 18)
     # Elevation-corrected ERA5: move the grid-cell temperature to the station's height
