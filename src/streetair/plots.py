@@ -48,8 +48,8 @@ def station_map(summary: pd.DataFrame, stations: pd.DataFrame, cfg: dict[str, An
     if background is not None:
         frac, ext = background
         im = ax.imshow(frac, extent=[e / 1000 for e in ext], cmap="Greys", vmin=0, vmax=1, alpha=0.75)
-        cb0 = fig.colorbar(im, ax=ax, shrink=0.6, pad=0.01, location="left")
-        cb0.set_label("Built-up fraction (WorldCover)")
+        cb0 = fig.colorbar(im, ax=ax, shrink=0.45, pad=0.12, location="bottom", aspect=30)
+        cb0.set_label("Built-up fraction (WorldCover, 300 m)")
     v = s.era5_bias_night_c.to_numpy()
     lim = max(float(np.nanmax(np.abs(v))) if np.isfinite(v).any() else 1.0, 0.5)
     xs, ys = np.array(xs) / 1000, np.array(ys) / 1000
@@ -70,8 +70,12 @@ def station_map(summary: pd.DataFrame, stations: pd.DataFrame, cfg: dict[str, An
                    for name, mk, lab in (("noaa-isd", "o", "NOAA airport station"), ("azmet", "s", "AZMet station"))
                    if (net == name).any()]
         ax.legend(handles=handles, loc="best", fontsize=8, framealpha=0.9)
-    for x, y, lab in zip(xs, ys, s.icao.fillna(s.station.str[-5:])):
-        ax.annotate(str(lab), (x, y), xytext=(5, 4), textcoords="offset points", fontsize=8)
+    # Airports labelled above-right, AZMet below-right, so co-located pairs (e.g. Buckeye) stay readable
+    for x, y, lab, n in zip(xs, ys, s.icao.fillna(s.station.str[-5:]), net):
+        off = (6, -11) if n == "azmet" else (6, 5)
+        ax.annotate(str(lab), (x, y), xytext=off, textcoords="offset points", fontsize=8, clip_on=False,
+                    bbox=dict(boxstyle="round,pad=0.15", fc="white", ec="none", alpha=0.7))
+    ax.margins(0.04)
     cb = fig.colorbar(sc, ax=ax, shrink=0.6, pad=0.01)
     cb.set_label("ERA5 minus station, night (°C)\nblue = station warmer than ERA5")
     ax.set_xlabel("Easting (km, UTM 12N)")
