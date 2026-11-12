@@ -52,10 +52,26 @@ def station_map(summary: pd.DataFrame, stations: pd.DataFrame, cfg: dict[str, An
         cb0.set_label("Built-up fraction (WorldCover)")
     v = s.era5_bias_night_c.to_numpy()
     lim = max(float(np.nanmax(np.abs(v))) if np.isfinite(v).any() else 1.0, 0.5)
-    sc = ax.scatter(np.array(xs) / 1000, np.array(ys) / 1000, c=v, cmap="RdBu_r",
-                    norm=TwoSlopeNorm(0, -lim, lim), s=90, edgecolor="black", linewidth=0.8, zorder=3)
+    xs, ys = np.array(xs) / 1000, np.array(ys) / 1000
+    net = s.network.fillna("") if "network" in s else pd.Series([""] * len(s))
+    norm = TwoSlopeNorm(0, -lim, lim)
+    sc = None
+    for name, marker, label in (("noaa-isd", "o", "NOAA airport station"), ("azmet", "s", "AZMet station"),
+                                ("", "o", None)):
+        m = (net == name).to_numpy()
+        if m.any():
+            sc = ax.scatter(xs[m], ys[m], c=v[m], cmap="RdBu_r", norm=norm, marker=marker, s=90,
+                            edgecolor="black", linewidth=0.8, zorder=3, label=label)
+    if (net != "").any():
+        from matplotlib.lines import Line2D
+
+        handles = [Line2D([], [], marker=mk, linestyle="", markerfacecolor="#cccccc", markeredgecolor="black",
+                          markersize=8, label=lab)
+                   for name, mk, lab in (("noaa-isd", "o", "NOAA airport station"), ("azmet", "s", "AZMet station"))
+                   if (net == name).any()]
+        ax.legend(handles=handles, loc="best", fontsize=8, framealpha=0.9)
     for x, y, lab in zip(xs, ys, s.icao.fillna(s.station.str[-5:])):
-        ax.annotate(str(lab), (x / 1000, y / 1000), xytext=(5, 4), textcoords="offset points", fontsize=8)
+        ax.annotate(str(lab), (x, y), xytext=(5, 4), textcoords="offset points", fontsize=8)
     cb = fig.colorbar(sc, ax=ax, shrink=0.6, pad=0.01)
     cb.set_label("ERA5 minus station, night (°C)\nblue = station warmer than ERA5")
     ax.set_xlabel("Easting (km, UTM 12N)")

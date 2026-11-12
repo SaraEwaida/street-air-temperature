@@ -1,6 +1,6 @@
 # Phoenix metropolitan area: downtown, Tempe, Mesa, Scottsdale, Glendale, Goodyear and the desert edge.
 city: phoenix
-bbox: [-112.60, 33.20, -111.50, 33.80]   # lon_min, lat_min, lon_max, lat_max (WGS84)
+bbox: [-112.75, 33.15, -111.50, 33.80]   # lon_min, lat_min, lon_max, lat_max (WGS84); includes Buckeye and Queen Creek
 crs: EPSG:32612                           # UTM 12N, metres, for buffers and maps
 
 period:
@@ -8,8 +8,8 @@ period:
   end: "2023-12-31"
 
 stations:
-  source: noaa-isd                        # NOAA Integrated Surface Database, global-hourly
-  min_coverage: 0.7                       # keep stations with >= 70% of hours after QC
+  sources: [noaa-isd, azmet]              # NOAA airport stations + AZMet (turf, farmland, suburbs)
+  min_coverage: 0.55                      # some airports report only part of the day (~60% of hours)
   valid_range_c: [-15, 55]                # plausible air temperature range for Phoenix
   max_step_c: 8                           # max change from both neighbouring hours (spike filter)
 

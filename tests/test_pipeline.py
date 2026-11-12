@@ -183,3 +183,46 @@ def test_download_rejects_non_csv(tmp_path, monkeypatch):
     assert isd.download("72278023183", 2023, tmp_path) is None    # HTML page = no data, skipped
     assert not list(tmp_path.iterdir())                          # nothing bad cached
     assert isd._looks_like_isd('﻿"STATION","DATE"')
+
+
+def test_azmet_stations_in_bbox():
+    from streetair import azmet
+
+    cfg = {**CFG, "bbox": [-112.75, 33.15, -111.50, 33.80], "period": {"start": "2023-01-01", "end": "2023-12-31"}}
+    st = azmet.list_stations(cfg)
+    assert set(st.icao) == {"PGR", "PEN", "QCR", "BUC", "DES"}       # Phoenix-area sites only
+
+
+def test_azmet_parse_end_of_hour_and_midnight():
+    from streetair import azmet
+
+    payload = {"data": [
+        {"meta_station_id": "az15", "date_datetime": "2023-07-01 22:00:00", "temp_airC": "36.4"},
+        {"meta_station_id": "az15", "date_datetime": "2023-07-01 23:00:00", "temp_airC": "35.9"},
+        {"meta_station_id": "az15", "date_datetime": "2023-07-01 23:59:59", "temp_airC": "35.1"},
+        {"meta_station_id": "az15", "date_datetime": "2023-07-02 01:00:00", "temp_airC": None},
+    ]}
+    df = azmet.parse(payload)
+    # Arizona is UTC-7: local 22:00 -> 05:00Z, the 23:59:59 midnight stamp -> 2023-07-02 07:00Z
+    assert df.time.dt.strftime("%Y-%m-%d %H:%M").tolist() == ["2023-07-02 05:00", "2023-07-02 06:00", "2023-07-02 07:00"]
+    assert df.t_obs.tolist() == [36.4, 35.9, 35.1]
+    assert azmet.parse({"data": []}).empty
+
+
+def test_azmet_fetch_chunks_requests(monkeypatch):
+    import requests
+    from streetair import azmet
+
+    urls = []
+
+    class Resp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"data": [{"meta_station_id": "az15", "date_datetime": "2023-07-01 01:00:00", "temp_airC": 30}]}
+
+    monkeypatch.setattr(requests, "get", lambda url, **k: (urls.append(url), Resp())[1])
+    df = azmet.fetch("az15", {"period": {"start": "2023-07-01", "end": "2023-07-25"}})
+    assert len(urls) == 3 and urls[0].endswith("/az15/2023-07-01T00:00/PT240H") and urls[-1].endswith("PT120H")
+    assert len(df) == 1                                              # duplicates across chunks removed

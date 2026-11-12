@@ -18,7 +18,8 @@ All sources are free and need no account.
 
 | Data | Source | Resolution | Use |
 |---|---|---|---|
-| Station air temperature | NOAA Integrated Surface Database (global-hourly CSV), via NOAA Open Data Dissemination on AWS | point, hourly | target |
+| Station air temperature | NOAA Integrated Surface Database (global-hourly CSV), via NOAA Open Data Dissemination on AWS | point, hourly | target (airports) |
+| Station air temperature | Arizona Meteorological Network (AZMet) API, University of Arizona | point, hourly | target (turf, farmland, suburbs) |
 | ERA5 2 m air temperature | Open-Meteo historical archive, `models=era5` | 0.25° (~25 km), hourly | coarse input |
 | Land cover | ESA WorldCover v200, Planetary Computer | 10 m | site features |
 | Elevation | Copernicus DEM GLO-30, Planetary Computer | 30 m | site features, lapse-rate baseline |
@@ -28,7 +29,8 @@ Details that matter:
 
 - **Station files** come from the `noaa-global-hourly-pds` S3 bucket: NCEI ended direct HTTPS download of ISD CSV in 2026, and ISD is superseded by GHCNh with no updates after August 2025. The 2023 study year is fully covered; GHCNh is the source to switch to for recent years.
 - **ERA5 is requested as the raw grid-cell value** (`elevation=nan`). By default Open-Meteo adjusts temperature to the point's elevation; that correction is computed separately here as an explicit baseline (standard lapse rate, -6.5 °C/km), so the model's gain over it is visible.
-- **Station quality control:** ISD quality codes 2, 3, 6 and 7 are dropped; routine hourly METAR reports (FM-15) are preferred when several reports fall in one hour; values outside -15 to 55 °C are removed; single-hour spikes of more than 8 °C against both neighbouring hours are removed; stations with less than 70% of hours left are dropped. A per-station report is written to `outputs/qc_report.csv`.
+- **Two station networks.** All NOAA stations around Phoenix are airports: open, paved and similar to each other, so on their own they cannot show what makes a park or farmland different. AZMet adds Phoenix Encanto and Phoenix Greenway (irrigated turf), Desert Ridge, Queen Creek and Buckeye (farmland and suburban edge). AZMet values are hourly averages stamped at the end of the hour, so they are assigned to the hour they end, matching ISD's routine reports a few minutes before the hour and ERA5 on the hour.
+- **Station quality control:** ISD quality codes 2, 3, 6 and 7 are dropped; routine hourly METAR reports (FM-15) are preferred when several reports fall in one hour; values outside -15 to 55 °C are removed; single-hour spikes of more than 8 °C against both neighbouring hours are removed; stations with less than 55% of hours left are dropped. The threshold is 55%, not higher, because Chandler, Glendale and Goodyear airports report only about 60% of hours; errors will be reported by hour of day, so partial coverage does not bias the comparison. A per-station report is written to `outputs/qc_report.csv`.
 - **Site features** are computed in circles of 100 m and 500 m around each station on a local UTM 12N grid: land-cover fractions (built-up, tree, shrub, grass/crop, bare, water), mean elevation, and median summer NDVI over up to five clear Landsat scenes. Station coordinates are deliberately not features, so the model has to learn from surroundings, not memorise places.
 - Phoenix stays on MST (UTC-7) all year, so local hour is unambiguous.
 
@@ -56,7 +58,23 @@ Or all steps at once: `sat all configs/phoenix.yaml`.
 
 ## Results
 
-To be added after running on real data.
+### First look (NOAA airports only, 2023)
+
+Six of nine airports passed an initial 70% coverage rule. Raw ERA5 against those stations:
+
+| Station | ERA5 bias, all hours | Night | Day | Built-up within 500 m |
+|---|---:|---:|---:|---:|
+| Phoenix Sky Harbor (KPHX) | -1.22 | -1.72 | -0.73 | 0.61 |
+| Falcon Field (KFFZ) | -0.63 | -1.07 | -0.19 | 0.62 |
+| Deer Valley (KDVT) | -0.39 | -0.41 | -0.36 | 0.39 |
+| Luke AFB (KLUF) | +0.24 | +0.28 | +0.20 | 0.17 |
+| Williams Gateway (KIWA) | +0.95 | +0.84 | +1.06 | 0.43 |
+| Scottsdale (KSDL) | +0.24 | -0.05 | +0.53 | 0.73 |
+
+Bias is ERA5 minus station, °C. Overall MAE 1.13 °C over 52,160 station-hours.
+
+- The urban heat island shows at night: ERA5 is 1.7 °C too cool at Sky Harbor, the most central airport.
+- Built-up fraction alone does not explain the pattern (Scottsdale is the most built-up and almost unbiased), which is why more varied stations and more features are needed before modelling. AZMet stations were added for that reason; results with both networks follow.
 
 ## Roadmap
 
@@ -71,7 +89,8 @@ To be added after running on real data.
 ```
 configs/phoenix.yaml   bbox, period, QC thresholds, feature radii, paths
 src/streetair/
-  isd.py               NOAA ISD station list, parsing, quality control
+  isd.py               NOAA ISD station list, parsing, quality control (shared by both networks)
+  azmet.py             AZMet station table and hourly API
   era5.py              Open-Meteo ERA5 request and parsing
   features.py          site features from Planetary Computer (windowed reads)
   dataset.py           station-hour table, lapse-rate baseline, station summary

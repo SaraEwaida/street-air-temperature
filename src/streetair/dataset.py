@@ -13,7 +13,8 @@ LAPSE_RATE_C_PER_M = -0.0065     # standard atmosphere, for the elevation-correc
 
 def build(obs: pd.DataFrame, era5: pd.DataFrame, stations: pd.DataFrame, feats: pd.DataFrame) -> pd.DataFrame:
     df = obs.merge(era5, on=["station", "time"], how="inner")
-    df = df.merge(stations[["station", "name", "icao", "lat", "lon", "elev_m"]], on="station", how="left")
+    cols = [c for c in ("station", "name", "icao", "network", "lat", "lon", "elev_m") if c in stations]
+    df = df.merge(stations[cols], on="station", how="left")
     df = df.merge(feats, on="station", how="left")
     local = df.time.dt.tz_convert(LOCAL_TZ)
     df["hour_local"] = local.dt.hour
@@ -31,7 +32,8 @@ def station_summary(df: pd.DataFrame) -> pd.DataFrame:
     def agg(g: pd.DataFrame) -> pd.Series:
         night, day = g[g.is_night], g[~g.is_night]
         return pd.Series({
-            "name": g["name"].iloc[0], "icao": g["icao"].iloc[0], "hours": len(g),
+            "name": g["name"].iloc[0], "icao": g["icao"].iloc[0],
+            "network": g["network"].iloc[0] if "network" in g else "", "hours": len(g),
             "mean_obs_c": g.t_obs.mean(),
             "era5_bias_c": g.era5_minus_obs.mean(),
             "era5_bias_night_c": night.era5_minus_obs.mean() if len(night) else np.nan,
