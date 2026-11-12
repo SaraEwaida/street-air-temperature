@@ -4,7 +4,7 @@
 
 Estimating street-level 2 m **air** temperature in Phoenix from coarse ERA5 reanalysis (~25 km), land cover, vegetation and elevation, validated on weather stations the model never saw.
 
-**Status:** milestone 1, station data pipeline. Model, temperature catalog and API come next (see [Roadmap](#roadmap)).
+**Status:** milestone 1 done: 15 stations, 120,617 station-hours, ERA5 and site features. Model, temperature catalog and API come next (see [Roadmap](#roadmap)).
 
 Companion to [Urban-Heat-Downscaling](https://github.com/SaraEwaida/Urban-Heat-Downscaling), which downscales satellite **land surface** temperature. Surface temperature is the skin of roofs, roads and sand; air temperature at 2 m is what people feel. This project targets the second.
 
@@ -58,23 +58,36 @@ Or all steps at once: `sat all configs/phoenix.yaml`.
 
 ## Results
 
-### First look (NOAA airports only, 2023)
+### Milestone 1: ERA5 against 15 stations, 2023
 
-Six of nine airports passed an initial 70% coverage rule. Raw ERA5 against those stations:
+All 15 stations passed quality control (10 NOAA airports, 5 AZMet sites), giving 120,617 station-hours. Bias is ERA5 minus station in °C, so **negative = station warmer than ERA5**. Night is 19:00-06:00 local time.
 
-| Station | ERA5 bias, all hours | Night | Day | Built-up within 500 m |
-|---|---:|---:|---:|---:|
-| Phoenix Sky Harbor (KPHX) | -1.22 | -1.72 | -0.73 | 0.61 |
-| Falcon Field (KFFZ) | -0.63 | -1.07 | -0.19 | 0.62 |
-| Deer Valley (KDVT) | -0.39 | -0.41 | -0.36 | 0.39 |
-| Luke AFB (KLUF) | +0.24 | +0.28 | +0.20 | 0.17 |
-| Williams Gateway (KIWA) | +0.95 | +0.84 | +1.06 | 0.43 |
-| Scottsdale (KSDL) | +0.24 | -0.05 | +0.53 | 0.73 |
+![Station map](outputs/figures/phoenix_stations.png)
 
-Bias is ERA5 minus station, °C. Overall MAE 1.13 °C over 52,160 station-hours.
+| Station | Network | Bias, all hours | Night | Day | Built-up within 500 m | NDVI within 500 m |
+|---|---|---:|---:|---:|---:|---:|
+| Phoenix Sky Harbor (KPHX) | NOAA | -1.22 | **-1.72** | -0.73 | 0.61 | 0.05 |
+| Falcon Field (KFFZ) | NOAA | -0.63 | -1.07 | -0.19 | 0.62 | 0.18 |
+| Deer Valley (KDVT) | NOAA | -0.39 | -0.41 | -0.36 | 0.39 | 0.13 |
+| Chandler (KCHD) | NOAA | +0.24 | -0.38 | +0.44 | 0.53 | 0.11 |
+| Goodyear (KGYR) | NOAA | -0.01 | -0.08 | +0.01 | 0.41 | 0.14 |
+| Scottsdale (KSDL) | NOAA | +0.24 | -0.05 | +0.53 | 0.73 | 0.14 |
+| Glendale (KGEU) | NOAA | +0.23 | +0.12 | +0.26 | 0.50 | 0.10 |
+| Luke AFB (KLUF) | NOAA | +0.24 | +0.28 | +0.20 | 0.17 | 0.13 |
+| Williams Gateway (KIWA) | NOAA | +0.95 | +0.84 | +1.06 | 0.43 | 0.09 |
+| Buckeye airport (KBXK) | NOAA | +1.24 | +1.99 | +0.50 | 0.21 | 0.13 |
+| Desert Ridge (DES) | AZMet | +0.56 | +0.80 | +0.33 | 0.40 | 0.37 |
+| Phoenix Greenway (PGR) | AZMet | +0.92 | +0.89 | +0.95 | 0.58 | 0.26 |
+| Phoenix Encanto (PEN) | AZMet | +1.03 | +1.23 | +0.84 | 0.41 | 0.42 |
+| Buckeye (BUC) | AZMet | +1.36 | +2.05 | +0.67 | 0.08 | 0.55 |
+| Queen Creek (QCR) | AZMet | +1.63 | **+2.23** | +1.03 | 0.04 | 0.56 |
 
-- The urban heat island shows at night: ERA5 is 1.7 °C too cool at Sky Harbor, the most central airport.
-- Built-up fraction alone does not explain the pattern (Scottsdale is the most built-up and almost unbiased), which is why more varied stations and more features are needed before modelling. AZMet stations were added for that reason; results with both networks follow.
+Overall: bias +0.45 °C, MAE 1.27 °C.
+
+- **ERA5's night-time error follows the surroundings.** Across the 15 stations it correlates at -0.74 with built-up fraction and +0.71 with NDVI: ERA5 is too cool over dense, paved sites (the urban heat island, strongest at Sky Harbor) and too warm over irrigated parks and farmland (evaporative cooling, strongest at Queen Creek and Buckeye).
+- **The effect is largest at night**, when the urban heat island is strongest, which is why errors will be reported by hour of day.
+- **Without AZMet this was invisible:** airports alone span too narrow a range of surroundings. With 15 stations these correlations are a strong hint, not a result; testing on held-out stations in milestone 2 decides how much of it a model can use.
+- Desert Ridge lost 42 hours to the range check, probably a sensor fault; every other station lost fewer than 3 hours to quality control.
 
 ## Roadmap
 
