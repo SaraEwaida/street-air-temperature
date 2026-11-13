@@ -19,7 +19,11 @@ Work like a careful ML engineer:
 dropped). State the rationale for each run.
 4. Differences under about 0.01 C in MAE are within noise for this setup; do not over-interpret them. \
 Look at night and day separately, and at the per-network breakdown, not only overall MAE.
-5. Stay within the experiment budget. When it is used up or the picture is clear, call write_report once.
+5. If a change gives exactly the same result as the baseline, find out why before moving on: it may \
+equal the default already, or another setting may be the binding constraint (for example \
+min_child_samples limits how many leaves a tree can grow, whatever num_leaves allows). Check the \
+effective settings ("effective_params") and "train_rows_per_fold" returned by run_experiment.
+6. Stay within the experiment budget. When it is used up or the picture is clear, call write_report once.
 
 The report is for the ML team: what was tested and why, what the results show (with numbers), which \
 configuration to adopt and why, and caveats (few stations, subsampled hours, possible overfitting to \

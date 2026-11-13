@@ -37,13 +37,13 @@ def test_full_session_with_guardrails(toolbox):
     check = prov.received[0][0][1]
     assert check["stations"] == 6 and check["issues"] == ["none found"]
 
-    report = open(res["reports"][0]).read()
+    report = open(res["reports"][0], encoding="utf-8").read()
     assert "Weather features matter at night." in report
     assert "| baseline | defaults |" in report and "| no-weather | no weather |" in report
     assert report.count("\n| ") >= 9                                     # results rows + tool log rows
-    rec = json.loads((toolbox.out / "experiments" / "no-weather.json").read_text())
+    rec = json.loads((toolbox.exp_dir / "no-weather.json").read_text(encoding="utf-8"))
     assert rec["dropped_groups"] == ["weather"] and rec["n_features"] < json.loads(
-        (toolbox.out / "experiments" / "baseline.json").read_text())["n_features"]
+        (toolbox.exp_dir / "baseline.json").read_text(encoding="utf-8"))["n_features"]
     assert rec["lightgbm"]["mae_c"] > 0 and rec["era5_raw"]["mae_c"] > 0
 
 
@@ -63,7 +63,7 @@ def test_bad_inputs_are_errors_not_crashes(toolbox):
 
 def test_report_is_written_even_if_agent_forgets(toolbox):
     res = run_agent(ScriptedProvider([[("check_data", {})]], final_text="I am done."), toolbox, verbose=False)
-    assert len(res["reports"]) == 1 and "no report written" in open(res["reports"][0]).read()
+    assert len(res["reports"]) == 1 and "no report written" in open(res["reports"][0], encoding="utf-8").read()
 
 
 # ---------------------------------------------------------------- provider adapters with fake clients
@@ -122,3 +122,17 @@ def test_pick_groq_model():
     assert pick_model(["some-new-model", "whisper-large-v3"]) == "some-new-model"
     with pytest.raises(RuntimeError):
         pick_model(["whisper-large-v3"])
+
+
+def test_unicode_report_and_unexpected_errors(toolbox, monkeypatch):
+    """Titles with non-ASCII characters are written as UTF-8 (Windows default encodings cannot), and an
+    unexpected exception inside a tool comes back as an error instead of ending the session."""
+    text, err = toolbox.call("write_report", {"title": "ERA5 → street level, 0.5 °C", "markdown": "Δ ≈ 0"})
+    assert not err
+    path = json.loads(text)["path"]
+    assert "ERA5 → street level" in open(path, encoding="utf-8").read()
+    monkeypatch.setattr(toolbox, "tool_check_data", lambda: 1 / 0)
+    text, err = toolbox.call("check_data", {})
+    assert err and "ZeroDivisionError" in json.loads(text)["error"]
+    out = json.loads(toolbox.call("run_experiment", {"name": "a", "rationale": "x"})[0])
+    assert out["effective_params"]["num_leaves"] == CFG["model"]["lightgbm"]["num_leaves"] and out["train_rows_per_fold"] > 0

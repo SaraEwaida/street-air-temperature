@@ -49,7 +49,9 @@ class Toolbox:
                  max_experiments: int = 8, hour_stride: int = 3):
         self.cfg = cfg
         self.out = Path(out_dir)
-        (self.out / "experiments").mkdir(parents=True, exist_ok=True)
+        self.session = datetime.now().strftime("%Y%m%d-%H%M%S")
+        self.exp_dir = self.out / "experiments" / self.session      # one folder per session: reruns never collide
+        self.exp_dir.mkdir(parents=True, exist_ok=True)
         (self.out / "reports").mkdir(parents=True, exist_ok=True)
         self.hour_stride = hour_stride
         # Same subsample for every experiment, so runs are comparable and studies stay fast
@@ -79,7 +81,7 @@ class Toolbox:
              "rationale": {"type": "string", "description": "One sentence: what this run tests"}},
              "required": ["name", "rationale"]}},
         {"name": "list_experiments",
-         "description": "All experiments run so far in this output folder, with headline metrics.",
+         "description": "All experiments run so far in this session, with headline metrics.",
          "input_schema": {"type": "object", "properties": {}}},
         {"name": "compare_experiments",
          "description": "Side-by-side metrics for the named experiments.",
@@ -107,6 +109,8 @@ class Toolbox:
             result, err = {"error": str(e)}, True
         except TypeError as e:
             result, err = {"error": f"Bad arguments: {e}"}, True
+        except Exception as e:  # noqa: BLE001 - report any failure to the agent instead of crashing the session
+            result, err = {"error": f"{type(e).__name__}: {e}"}, True
         self.log.append({"tool": name, "args": args, "error": err, "seconds": round(time.time() - t0, 1),
                          "summary": _short(result)})
         return json.dumps(result, default=_json), err
@@ -148,7 +152,7 @@ class Toolbox:
                             drop_feature_groups: list | None = None) -> dict[str, Any]:
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,40}", name or ""):
             raise ToolError("name must be 1-40 letters, digits, '-' or '_'")
-        if (self.out / "experiments" / f"{name}.json").exists():
+        if (self.exp_dir / f"{name}.json").exists():
             raise ToolError(f"experiment {name!r} already exists; choose another name")
         if self.experiments_run >= self.max_experiments:
             raise ToolError(f"experiment budget of {self.max_experiments} used up; compare results and write the report")
@@ -191,14 +195,17 @@ class Toolbox:
                "era5_raw": row("era5_raw"), "lightgbm_mae_by_network": nets,
                "rows": int(len(oof)), "hour_stride": self.hour_stride, "seconds": round(time.time() - t0, 1),
                "finished_utc": datetime.now(timezone.utc).isoformat(timespec="seconds")}
-        (self.out / "experiments" / f"{name}.json").write_text(json.dumps(rec, indent=2))
+        (self.exp_dir / f"{name}.json").write_text(json.dumps(rec, indent=2), encoding="utf-8")
         # Compact answer for the model (free tiers limit tokens); the full record is on disk
+        n_st = self.df.station.nunique()
         return {"name": name, "changes": params, "dropped_groups": drop, "n_features": len(feats),
+                "effective_params": lgb_params,
+                "train_rows_per_fold": int(len(self.df) * (n_st - 1) / n_st),
                 "lightgbm": rec["lightgbm"], "era5_raw_mae_c": rec["era5_raw"]["mae_c"],
                 "lightgbm_mae_by_network": nets, "budget_left": self.max_experiments - self.experiments_run}
 
     def _records(self) -> list[dict[str, Any]]:
-        return [json.loads(p.read_text()) for p in sorted((self.out / "experiments").glob("*.json"))]
+        return [json.loads(p.read_text(encoding="utf-8")) for p in sorted(self.exp_dir.glob("*.json"))]
 
     def tool_list_experiments(self) -> dict[str, Any]:
         return {"experiments": [{"name": r["name"], "mae_c": r["lightgbm"]["mae_c"], "night": r["lightgbm"].get("mae_night_c"),
@@ -215,7 +222,7 @@ class Toolbox:
 
     def tool_write_report(self, title: str, markdown: str) -> dict[str, Any]:
         slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")[:60] or "report"
-        path = self.out / "reports" / f"{datetime.now():%Y%m%d-%H%M}-{slug}.md"
+        path = self.out / "reports" / f"{self.session}-{slug}.md"
         recs = self._records()
         body = [f"# {title}", "", markdown.strip(), "", "## Results (generated from the experiment logs)", "",
                 f"Leave-one-station-out, every {self.hour_stride} hours of the station table "
@@ -225,7 +232,7 @@ class Toolbox:
         for i, e in enumerate(self.log, 1):
             body.append(f"| {i} | {e['tool']}{' (error)' if e['error'] else ''} | `{_cell(json.dumps(e['args']))}` | "
                         f"{_cell(e['summary'])} | {e['seconds']} |")
-        path.write_text("\n".join(body) + "\n")
+        path.write_text("\n".join(body) + "\n", encoding="utf-8")
         self.reports.append(path)
         return {"path": str(path)}
 
