@@ -9,9 +9,9 @@ Each item has three assets:
 - temperature: corrected 2 m air temperature (degC)
 - era5: the raw ERA5 value on the same grid, for comparison (degC)
 - correction: temperature minus ERA5 (degC)
-The collection has one static asset, `in_training_range`: 1 where every site feature lies
-inside the range spanned by the 15 training stations (plus an absolute margin), 0 where the
-model extrapolates.
+The collection has two static assets: `area_of_applicability` (1 where a pixel's surroundings
+are no more unusual than a held-out station's were during validation, after Meyer & Pebesma
+2021) and `dissimilarity_index`, the underlying distance.
 Water pixels (WorldCover water fraction within 100 m above a threshold) are nodata.
 """
 
@@ -110,6 +110,45 @@ def support_mask(feats: dict[str, np.ndarray], ranges: dict[str, tuple[float, fl
     return ok
 
 
+def area_of_applicability(train: pd.DataFrame, grid_feats: dict[str, np.ndarray], weights: dict[str, float],
+                          chunk: int = 200_000) -> tuple[np.ndarray, float, np.ndarray]:
+    """Dissimilarity index (DI) and area of applicability, after Meyer & Pebesma (2021),
+    "Predicting into unknown space? Estimating the area of applicability of spatial prediction
+    models", Methods in Ecology and Evolution 12(9).
+
+    Features are standardised with the training stations' mean and standard deviation and
+    weighted by model importance. DI = distance to the nearest training station divided by the
+    mean distance between training stations. The threshold is the upper whisker (75th
+    percentile + 1.5 IQR, capped at the maximum) of the training stations' own DI to their
+    nearest *other* station, which mirrors leave-one-station-out validation.
+    Missing pixel values are set to the training mean (neutral).
+
+    Returns (DI map, threshold, training DI per station).
+    """
+    cols = [c for c in train.columns if c in grid_feats and c in weights]
+    X = train[cols].to_numpy(float)
+    mu, sd = np.nanmean(X, axis=0), np.nanstd(X, axis=0)
+    sd[sd == 0] = 1.0
+    w = np.array([weights[c] for c in cols], float)
+    w = w / w.sum() if w.sum() > 0 else np.ones_like(w) / len(w)
+    Z = np.nan_to_num((X - mu) / sd) * w
+    D = np.sqrt(((Z[:, None, :] - Z[None, :, :]) ** 2).sum(-1))
+    n = len(Z)
+    d_bar = D[~np.eye(n, dtype=bool)].mean()
+    np.fill_diagonal(D, np.inf)
+    di_train = D.min(axis=1) / d_bar
+    q1, q3 = np.percentile(di_train, [25, 75])
+    thr = float(min(q3 + 1.5 * (q3 - q1), di_train.max()))
+
+    shape = next(iter(grid_feats.values())).shape
+    G = np.stack([grid_feats[c].ravel().astype(float) for c in cols], axis=1)
+    di = np.empty(G.shape[0], np.float32)
+    for i in range(0, len(G), chunk):
+        g = np.nan_to_num((G[i:i + chunk] - mu) / sd) * w
+        di[i:i + chunk] = np.sqrt(((g[:, None, :] - Z[None, :, :]) ** 2).sum(-1)).min(axis=1) / d_bar
+    return di.reshape(shape), thr, di_train
+
+
 def predict_hour(grid: dict[str, Any], cell_idx: np.ndarray, era5_t: pd.DataFrame, time_utc: pd.Timestamp,
                  booster, features: list[str], land: np.ndarray) -> dict[str, np.ndarray]:
     """Temperature, ERA5 and correction maps for one hour. era5_t: one row per cell for this hour."""
@@ -165,7 +204,8 @@ RASTER_EXT = "https://stac-extensions.github.io/raster/v1.1.0/schema.json"
 
 
 def build_catalog(cfg: dict[str, Any], grid: dict[str, Any], maps: dict[pd.Timestamp, dict[str, np.ndarray]],
-                  in_range: np.ndarray, root: str | Path, model_info: dict[str, Any]) -> Path:
+                  in_range: np.ndarray, root: str | Path, model_info: dict[str, Any],
+                  dissimilarity: np.ndarray | None = None) -> Path:
     import pystac
 
     root = Path(root)
@@ -188,10 +228,16 @@ def build_catalog(cfg: dict[str, Any], grid: dict[str, Any], maps: dict[pd.Times
         extra_fields={"summaries": {"model": model_info}},
     )
     coll.stac_extensions = [PROJ_EXT, RASTER_EXT]
-    write_cog(root / "in_training_range.tif", in_range.astype(np.uint8), grid, dtype="uint8", nodata=255)
-    coll.add_asset("in_training_range", pystac.Asset(
-        href=str((root / "in_training_range.tif").resolve()), media_type=pystac.MediaType.COG, roles=["metadata"],
-        title="1 = site features inside the range of the training stations, 0 = extrapolation"))
+    write_cog(root / "area_of_applicability.tif", in_range.astype(np.uint8), grid, dtype="uint8", nodata=255)
+    coll.add_asset("area_of_applicability", pystac.Asset(
+        href=str((root / "area_of_applicability.tif").resolve()), media_type=pystac.MediaType.COG, roles=["metadata"],
+        title="1 = inside the model's area of applicability (Meyer & Pebesma 2021), 0 = outside"))
+    if dissimilarity is not None:
+        write_cog(root / "dissimilarity_index.tif", dissimilarity, grid)
+        coll.add_asset("dissimilarity_index", pystac.Asset(
+            href=str((root / "dissimilarity_index.tif").resolve()), media_type=pystac.MediaType.COG,
+            roles=["metadata"], title="Dissimilarity of each pixel's surroundings to the nearest training station",
+            extra_fields={"aoa_threshold": model_info.get("aoa_threshold")}))
 
     for t in times:
         tid = t.tz_convert(LOCAL_TZ).strftime("%Y%m%dT%H%M")
@@ -222,7 +268,7 @@ def summary(maps: dict[pd.Timestamp, dict[str, np.ndarray]], in_range: np.ndarra
                      "era5_mean_c": float(np.nanmean(m["era5"])), "temperature_mean_c": float(np.nanmean(m["temperature"])),
                      "correction_p5_c": float(np.nanpercentile(c, 5)), "correction_p95_c": float(np.nanpercentile(c, 95)),
                      "spread_p95_p5_c": float(np.nanpercentile(m["temperature"], 95) - np.nanpercentile(m["temperature"], 5)),
-                     "land_pixels": int(ok.sum()), "in_training_range": float(in_range[ok].mean())})
+                     "land_pixels": int(ok.sum()), "in_aoa": float(in_range[ok].mean())})
     return pd.DataFrame(rows).round(2)
 
 

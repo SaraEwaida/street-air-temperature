@@ -167,17 +167,28 @@ def _catalog(cfg):
     ranges = catalog.training_ranges(pd.read_csv(cfg["paths"]["features"]), pd.read_parquet(cfg["paths"]["dataset"]))
     elev_cell = e.groupby("station").era5_cell_elev_m.first().reindex(cells.station).to_numpy()
     site = {**g["features"], "elev_minus_cell_m": g["features"]["elev_dem_m"] - elev_cell[cell_idx]}
-    in_range = catalog.support_mask(site, ranges) & land
+    # Area of applicability: distance in importance-weighted site-feature space (Meyer & Pebesma 2021)
+    from .model import SITE
+
+    imp = pd.read_csv(Path(cfg["paths"]["results_dir"]) / "model_importance.csv").set_index("feature").gain_share
+    train_site = pd.read_csv(cfg["paths"]["features"], dtype={"station": str}).set_index("station")
+    ds_elev = pd.read_parquet(cfg["paths"]["dataset"]).groupby("station").elev_minus_cell_m.first()
+    train_site["elev_minus_cell_m"] = ds_elev.reindex(train_site.index)
+    weights = {k: float(imp.get(k, 0.0)) for k in SITE}
+    di, thr, di_train = catalog.area_of_applicability(train_site[[k for k in SITE if k in train_site]], site, weights)
+    in_range = (di <= thr) & land
+    di = np.where(land, di, np.nan)
     by_feat = catalog.support_by_feature(site, ranges, land)
     by_feat.to_csv(Path(cfg["paths"]["results_dir"]) / "catalog_support.csv", index=False)
     f = g["features"]
     zones = {"urban (built-up >= 30% within 500 m)": land & (f["frac_built_500m"] >= 0.3),
              "farmland (grass/crop >= 30% within 500 m)": land & (f["frac_grass_crop_500m"] >= 0.3),
              "natural desert (shrub >= 50% within 500 m)": land & (f["frac_shrub_500m"] >= 0.5)}
-    print(f"Land pixels inside the training stations' range: {in_range[land].mean():.0%}")
+    print(f"Area of applicability: DI threshold {thr:.3f} (training stations' DI {di_train.min():.2f}-{di_train.max():.2f}); "
+          f"{in_range[land].mean():.0%} of land inside")
     for name, z in zones.items():
-        print(f"  {name}: {z.sum() / land.sum():.0%} of land, {in_range[z].mean() if z.any() else 0:.0%} in range")
-    print("Most limiting features:")
+        print(f"  {name}: {z.sum() / land.sum():.0%} of land, {in_range[z].mean() if z.any() else 0:.0%} inside")
+    print("Per-feature range check (diagnostic), most limiting:")
     print(by_feat.head(6).to_string(index=False))
     maps = {}
     for t in times:
@@ -187,8 +198,9 @@ def _catalog(cfg):
         maps[t] = catalog.predict_hour(g, cell_idx, et, t, booster, features, land)
         print(f"  {t.tz_convert('America/Phoenix'):%Y-%m-%d %H:%M} MST mapped", flush=True)
     info = {"model": "LightGBM residual over raw ERA5", "validation": "leave-one-station-out, 15 stations",
-            "features": features}
-    path = catalog.build_catalog(cfg, g, maps, in_range, cfg["paths"]["catalog_dir"], info)
+            "features": features, "aoa_threshold": round(thr, 4),
+            "aoa_method": "Meyer & Pebesma (2021), importance-weighted site features"}
+    path = catalog.build_catalog(cfg, g, maps, in_range, cfg["paths"]["catalog_dir"], info, dissimilarity=di)
     summ = catalog.summary(maps, in_range)
     summ.to_csv(Path(cfg["paths"]["results_dir"]) / "catalog_summary.csv", index=False)
     print(summ.to_string(index=False))

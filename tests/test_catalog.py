@@ -126,7 +126,7 @@ def test_stac_catalog_reads_back(built):
     item = items[0]
     assert set(item.assets) == {"temperature", "era5", "correction"}
     assert item.properties["proj:code"] == "EPSG:32612" and item.properties["proj:shape"] == list(g["shape"])
-    assert "in_training_range" in coll.assets
+    assert "area_of_applicability" in coll.assets
     raw = json.loads(path.read_text())
     assert raw["type"] == "Collection" and raw["license"] == "CC-BY-4.0"
     item_json = json.loads(next(path.parent.glob("*/phoenix-air-temperature-*.json")).read_text())
@@ -142,6 +142,22 @@ def test_stac_catalog_reads_back(built):
 def test_summary_and_figure(built, tmp_path):
     g, maps, times, in_range, _ = built
     s = catalog.summary(maps, in_range)
-    assert len(s) == 2 and (s.land_pixels > 0).all() and s.in_training_range.between(0, 1).all()
+    assert len(s) == 2 and (s.land_pixels > 0).all() and s.in_aoa.between(0, 1).all()
     st = pd.DataFrame({"lon": [-112.05], "lat": [33.43]})
     assert catalog_maps(maps, times, g, tmp_path / "m.png", stations=st).stat().st_size > 10_000
+
+
+
+def test_area_of_applicability():
+    rng = np.random.default_rng(0)
+    train = pd.DataFrame({"frac_built_500m": rng.uniform(0, 0.7, 15), "ndvi_500m": rng.uniform(0.05, 0.55, 15)})
+    grid_f = {"frac_built_500m": np.array([[0.35, 0.35, 3.0, np.nan]]),
+              "ndvi_500m": np.array([[0.30, 0.30, 0.3, 0.30]])}
+    di, thr, di_train = catalog.area_of_applicability(train, grid_f, {"frac_built_500m": 0.7, "ndvi_500m": 0.3})
+    assert di.shape == (1, 4) and len(di_train) == 15
+    assert di[0, 0] <= thr                 # typical surroundings: inside
+    assert di[0, 2] > thr                  # far outside the stations' built-up range: outside
+    assert di[0, 3] <= thr                 # missing value treated as neutral, not as extreme
+    # a feature with zero weight cannot push a pixel outside
+    di2, thr2, _ = catalog.area_of_applicability(train, grid_f, {"frac_built_500m": 0.0, "ndvi_500m": 1.0})
+    assert di2[0, 2] <= thr2
