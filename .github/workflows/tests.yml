@@ -13,5 +13,13 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - run: pip install -e ".[dev]"
+      - run: pip install -e ".[dev,api]"
       - run: pytest -q
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t street-air-temperature .
+      - name: API imports inside the image
+        run: docker run --rm street-air-temperature python -c "import streetair.api as a; print(a.app.title)"

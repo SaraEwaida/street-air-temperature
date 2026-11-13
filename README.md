@@ -4,7 +4,7 @@
 
 Estimating street-level 2 m **air** temperature in Phoenix from coarse ERA5 reanalysis (~25 km), land cover, vegetation and elevation, validated on weather stations the model never saw.
 
-**Status:** milestones 1-3 done: 15 stations, a correction that cuts ERA5's error at unseen stations by 19%, and a STAC catalog of 100 m maps with an area of applicability. The API comes next. Model, temperature catalog and API come next (see [Roadmap](#roadmap)).
+**Status:** milestones 1-4 done: 15 stations, a correction that cuts ERA5's error at unseen stations by 19%, a STAC catalog of 100 m maps with an area of applicability, and a FastAPI service in Docker. Model, temperature catalog and API come next (see [Roadmap](#roadmap)).
 
 Companion to [Urban-Heat-Downscaling](https://github.com/SaraEwaida/Urban-Heat-Downscaling), which downscales satellite **land surface** temperature. Surface temperature is the skin of roofs, roads and sand; air temperature at 2 m is what people feel. This project targets the second.
 
@@ -40,7 +40,7 @@ Details that matter:
 git clone https://github.com/SaraEwaida/street-air-temperature.git
 cd street-air-temperature
 python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\Activate.ps1
-pip install -e ".[dev]"
+pip install -e ".[dev,api]"
 pytest
 ```
 
@@ -191,12 +191,42 @@ sat catalog configs/phoenix.yaml    # maps for 8 hours, COGs + STAC     -> data/
 - The maps are usable for most farmland and about 60% of the urban area. The rest of the city differs from all 15 stations, which are airports, parks and farms; dense residential blocks are the likely gap. The surrounding Sonoran Desert and the mountains are outside: no station sits there.
 - **The way to widen it is stations, not modelling:** sensors inside residential neighbourhoods and in open desert would extend the area of applicability directly.
 
+## Milestone 4: API
+
+A FastAPI service answers: what is the 2 m air temperature here, at this hour? It runs the same computation as the maps (a test checks that a point at a pixel centre returns that pixel's map value), with ERA5 fetched live for the four surrounding cells and cached.
+
+Run it without Docker:
+
+```bash
+pip install -e ".[api]"
+uvicorn streetair.api:app --reload          # needs the files made by `sat grid`, `sat model` and `sat catalog`
+```
+
+Or with Docker. The image holds code only; the trained model, grid features and catalog are mounted from `data/`, so a retrained model needs no rebuild:
+
+```bash
+docker build -t street-air-temperature .
+docker run -p 8000:8000 -v "$(pwd)/data:/app/data" street-air-temperature
+```
+
+Then open http://localhost:8000/docs for the interactive documentation.
+
+| Endpoint | Returns |
+|---|---|
+| `GET /temperature?lat=33.4484&lon=-112.074&time=2023-07-15T05:00` | ERA5, correction and corrected temperature (°C), dissimilarity index, whether the point is inside the area of applicability, and the site and weather features used |
+| `GET /health` | service status, grid size, number of model features |
+| `GET /catalog` | the STAC collection of the 100 m maps |
+
+- Times without a timezone are read as Phoenix local time (MST, UTC-7) and rounded to the hour.
+- Points outside the mapped area, on water, or at hours not yet in the ERA5 archive (which lags real time by several days) return HTTP 422 with an explanation.
+- CI builds the Docker image on every push and checks that the API loads inside it.
+
 ## Roadmap
 
 1. Station data pipeline: stations, QC, ERA5, site features, joined table.
 2. Model: Ridge and LightGBM corrections to ERA5, validated by leaving whole stations out, against raw, lapse-rate and constant-offset ERA5; errors by hour of day, station and network.
 3. Temperature catalog: 100 m air-temperature maps as Cloud-Optimised GeoTIFFs, indexed in a STAC catalog, with an area of applicability.
-4. Service: FastAPI endpoint (location and time in, temperature out) in Docker.
+4. Service: FastAPI endpoint (location and time in, temperature out) in Docker (this milestone).
 5. Results and limitations write-up.
 
 ## Layout
@@ -212,6 +242,9 @@ src/streetair/
   model.py             leave-one-station-out evaluation, Ridge and LightGBM, final model
   grid.py              site features for every 100 m pixel (disc averages)
   catalog.py           per-pixel prediction, COG writing, STAC collection
+  service.py           point prediction (same computation as the maps), live ERA5 with cache
+  api.py               FastAPI app
+Dockerfile             API image (code only; data mounted at run time)
   plots.py             station map, error by hour, error by station, map figure
   cli.py               `sat` command
 tests/                 fixtures in the real formats; no network needed
