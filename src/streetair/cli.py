@@ -1,4 +1,4 @@
-"""Command line: sat stations | era5 | features | build | map | model | all."""
+"""Command line: sat stations | era5 | features | build | map | model | grid | catalog | all."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import argparse
 import json
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from .config import load_config
@@ -126,8 +127,68 @@ def _model(cfg):
     print(f"Saved {out}/model_*.csv, figures, and {cfg['paths']['model_lightgbm']}")
 
 
+def _grid(cfg):
+    from . import grid
+
+    print("Site features for every pixel (Planetary Computer)...")
+    g = grid.static_features(cfg)
+    grid.save(g, cfg["paths"]["grid_features"])
+    # Consistency: grid features at the station pixels vs the stations' own 10 m circle features
+    st = pd.read_csv(cfg["paths"]["stations"], dtype={"station": str})
+    sf = pd.read_csv(cfg["paths"]["features"], dtype={"station": str}).set_index("station").loc[st.station]
+    at = grid.sample_at(g, st.lon.to_numpy(), st.lat.to_numpy())
+    rows = [{"feature": k, "mean_abs_diff": float(np.nanmean(np.abs(at[k] - sf[k].to_numpy()))),
+             "station_range": float(sf[k].max() - sf[k].min())} for k in at if k in sf]
+    chk = pd.DataFrame(rows).round(3)
+    chk.to_csv(Path(cfg["paths"]["results_dir"]) / "grid_feature_check.csv", index=False)
+    print(chk.to_string(index=False))
+    print(f"Grid {g['shape'][0]} x {g['shape'][1]}, {g['ndvi_scenes']} Landsat scenes -> {cfg['paths']['grid_features']}")
+
+
+def _catalog(cfg):
+    import json
+
+    import lightgbm as lgb
+
+    from . import catalog, grid
+    from .plots import catalog_maps
+
+    g = grid.load(cfg["paths"]["grid_features"])
+    cells = catalog.era5_cells(cfg)
+    times = catalog.local_times(cfg)
+    print(f"ERA5 for {len(cells)} cells around {len(times)} map times...")
+    e = catalog.fetch_era5_cells(cfg, cells, times)
+    e.to_parquet(cfg["paths"]["era5_cells"], index=False)
+
+    booster = lgb.Booster(model_file=cfg["paths"]["model_lightgbm"])
+    features = json.loads(Path(cfg["paths"]["model_lightgbm"]).with_suffix(".features.json").read_text())
+    cell_idx = catalog.pixel_cells(g, cells)
+    land = np.isfinite(g["features"]["frac_water_100m"]) & (g["features"]["frac_water_100m"] <= cfg["catalog"]["water_threshold"])
+    ranges = catalog.training_ranges(pd.read_csv(cfg["paths"]["features"]), pd.read_parquet(cfg["paths"]["dataset"]))
+    elev_cell = e.groupby("station").era5_cell_elev_m.first().reindex(cells.station).to_numpy()
+    in_range = catalog.support_mask({**g["features"], "elev_minus_cell_m": g["features"]["elev_dem_m"] - elev_cell[cell_idx]},
+                                    ranges) & land
+    maps = {}
+    for t in times:
+        et = e[e.time == t]
+        if et.empty:
+            raise RuntimeError(f"No ERA5 for {t}")
+        maps[t] = catalog.predict_hour(g, cell_idx, et, t, booster, features, land)
+        print(f"  {t.tz_convert('America/Phoenix'):%Y-%m-%d %H:%M} MST mapped", flush=True)
+    info = {"model": "LightGBM residual over raw ERA5", "validation": "leave-one-station-out, 15 stations",
+            "features": features}
+    path = catalog.build_catalog(cfg, g, maps, in_range, cfg["paths"]["catalog_dir"], info)
+    summ = catalog.summary(maps, in_range)
+    summ.to_csv(Path(cfg["paths"]["results_dir"]) / "catalog_summary.csv", index=False)
+    print(summ.to_string(index=False))
+    st = pd.read_csv(cfg["paths"]["stations"], dtype={"station": str})
+    fig_times = [pd.Timestamp(x).tz_localize("America/Phoenix").tz_convert("UTC") for x in cfg["catalog"]["figure_times_local"]]
+    catalog_maps(maps, fig_times, g, cfg["paths"]["catalog_figure"], stations=st)
+    print(f"Saved STAC collection {path} and {cfg['paths']['catalog_figure']}")
+
+
 STEPS = {"stations": _stations, "era5": _era5, "features": _features, "build": _build, "map": _map,
-         "model": _model}
+         "model": _model, "grid": _grid, "catalog": _catalog}
 
 
 def main(argv: list[str] | None = None) -> None:

@@ -142,11 +142,29 @@ Every number is from stations the model never saw (leave one station out, 15 fol
 - **Most important LightGBM features:** built-up fraction within 100 m (20% of gain), ERA5 humidity (9%), hour of day (7%), height relative to the ERA5 cell (7%), built-up within 500 m (6%), solar radiation (6%).
 - **Not uniform across stations.** LightGBM is worse than raw ERA5 at three west-side airports (Luke, Glendale, Goodyear) and Ridge at Deer Valley and Desert Ridge. With 15 stations, per-station results are noisy, and more stations (or more years) are the main way to firm them up.
 
+## Reproduce milestone 3: temperature catalog
+
+```bash
+sat grid configs/phoenix.yaml       # site features for every 100 m pixel -> data/phoenix/grid_features.npz
+sat catalog configs/phoenix.yaml    # maps for 8 hours, COGs + STAC     -> data/phoenix/catalog/
+```
+
+- **Grid features** are the station features computed for every 100 m pixel: WorldCover read at 10 m, class fractions and Landsat NDVI averaged over discs of 100 m and 500 m on a 50 m base grid, and DEM height. `sat grid` compares them with the stations' own 10 m-circle features at the 15 station pixels (`outputs/grid_feature_check.csv`), so the approximation is measured, not assumed.
+- **Weather** for each pixel comes from its ERA5 0.25° cell: the same raw grid-cell values the stations were compared with, plus the same 3-hour change and daily mean.
+- **Maps:** the final LightGBM from milestone 2 (trained on all 15 stations) predicts the correction for every land pixel; water pixels (more than 50% water within 100 m) are nodata.
+- **Hours mapped:** the 15th of January, April, July and October 2023, at 05:00 (near the daily minimum, strongest urban heat island) and 15:00 (near the maximum), MST.
+- **Catalog:** a self-contained STAC Collection with one Item per hour, using the projection and raster extensions. Each Item has three Cloud-Optimised GeoTIFF assets: `temperature`, `era5` (raw, same grid) and `correction`. The collection asset `in_training_range` marks pixels whose surroundings lie inside the range covered by the 15 training stations (with 5% margin); outside it the model extrapolates and the map should be read with care. The folder can be moved or uploaded as is: all links are relative.
+- Summary per hour: `outputs/catalog_summary.csv`; figure: `outputs/figures/air_temperature_july.png`.
+
+### Milestone 3 results
+
+To be filled after `sat catalog`.
+
 ## Roadmap
 
 1. Station data pipeline: stations, QC, ERA5, site features, joined table.
-2. Model: Ridge and LightGBM corrections to ERA5, validated by leaving whole stations out, against raw, lapse-rate and constant-offset ERA5; errors by hour of day, station and network (this milestone).
-3. Temperature catalog: 100 m air-temperature maps as Cloud-Optimised GeoTIFFs, indexed in a STAC catalog.
+2. Model: Ridge and LightGBM corrections to ERA5, validated by leaving whole stations out, against raw, lapse-rate and constant-offset ERA5; errors by hour of day, station and network.
+3. Temperature catalog: 100 m air-temperature maps as Cloud-Optimised GeoTIFFs, indexed in a STAC catalog (this milestone).
 4. Service: FastAPI endpoint (location and time in, temperature out) in Docker.
 5. Results and limitations write-up.
 
@@ -161,7 +179,9 @@ src/streetair/
   features.py          site features from Planetary Computer (windowed reads)
   dataset.py           station-hour table, ERA5 context, lapse-rate baseline, station summary
   model.py             leave-one-station-out evaluation, Ridge and LightGBM, final model
-  plots.py             station map, error by hour, error by station
+  grid.py              site features for every 100 m pixel (disc averages)
+  catalog.py           per-pixel prediction, COG writing, STAC collection
+  plots.py             station map, error by hour, error by station, map figure
   cli.py               `sat` command
 tests/                 fixtures in the real formats; no network needed
 ```

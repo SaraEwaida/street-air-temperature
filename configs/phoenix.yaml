@@ -35,6 +35,15 @@ model:
     bagging_fraction: 0.8
     seed: 0
 
+# Milestone 3: maps for selected hours (local MST), COGs + STAC catalog
+catalog:
+  res_m: 100
+  base_res_m: 50                # disc averages are computed on a 50 m base grid
+  water_threshold: 0.5          # WorldCover water fraction within 100 m above this -> nodata
+  times_local: ["2023-01-15T05:00", "2023-01-15T15:00", "2023-04-15T05:00", "2023-04-15T15:00",
+                "2023-07-15T05:00", "2023-07-15T15:00", "2023-10-15T05:00", "2023-10-15T15:00"]
+  figure_times_local: ["2023-07-15T05:00", "2023-07-15T15:00"]
+
 paths:
   stations: data/phoenix/stations.csv
   observations: data/phoenix/observations.parquet
@@ -46,3 +55,7 @@ paths:
   oof: data/phoenix/predictions_loso.parquet
   model_lightgbm: data/phoenix/models/lightgbm.txt
   results_dir: outputs
+  grid_features: data/phoenix/grid_features.npz
+  era5_cells: data/phoenix/era5_cells.parquet
+  catalog_dir: data/phoenix/catalog
+  catalog_figure: outputs/figures/air_temperature_july.png

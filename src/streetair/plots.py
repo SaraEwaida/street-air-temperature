@@ -143,3 +143,39 @@ def error_by_station(by_station: pd.DataFrame, out: str | Path, methods=("era5_r
     fig.savefig(out, dpi=150, bbox_inches="tight")
     plt.close(fig)
     return out
+
+
+def catalog_maps(maps: dict, times: list, grid: dict, out: str | Path, stations: pd.DataFrame | None = None) -> Path:
+    """For each time: raw ERA5 and corrected temperature side by side on one shared scale."""
+    from .dataset import LOCAL_TZ
+
+    t_, (h, w) = grid["transform"], grid["shape"]
+    ext = [t_.c / 1000, (t_.c + w * t_.a) / 1000, (t_.f + h * t_.e) / 1000, t_.f / 1000]
+    cmap = plt.get_cmap("inferno").with_extremes(bad="#d9d9d9")
+    fig, axes = plt.subplots(len(times), 2, figsize=(12, 3.6 * len(times)), squeeze=False,
+                             sharex=True, sharey=True, constrained_layout=True)
+    for row, tm in zip(axes, times):
+        m = maps[tm]
+        both = np.concatenate([m["era5"][np.isfinite(m["era5"])], m["temperature"][np.isfinite(m["temperature"])]])
+        vmin, vmax = np.percentile(both, [1, 99])
+        label = tm.tz_convert(LOCAL_TZ).strftime("%d %b %Y, %H:%M MST")
+        for ax, key, title in zip(row, ("era5", "temperature"), ("Raw ERA5 (~25 km)", "Corrected (100 m)")):
+            im = ax.imshow(m[key], extent=ext, cmap=cmap, vmin=vmin, vmax=vmax, interpolation="nearest")
+            ax.set_title(f"{title}: {label}", loc="left", fontsize=10)
+            ax.set_aspect("equal")
+            if stations is not None:
+                from rasterio.warp import transform as warp_points
+
+                xs, ys = warp_points("EPSG:4326", grid["crs"], stations.lon.tolist(), stations.lat.tolist())
+                ax.scatter(np.array(xs) / 1000, np.array(ys) / 1000, s=10, c="white", edgecolor="black", lw=0.5)
+        cb = fig.colorbar(im, ax=row, shrink=0.85, pad=0.01)
+        cb.set_label("2 m air temperature (°C)")
+    for ax in axes[-1]:
+        ax.set_xlabel("Easting (km, UTM 12N)")
+    for ax in axes[:, 0]:
+        ax.set_ylabel("Northing (km)")
+    out = Path(out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out, dpi=140)
+    plt.close(fig)
+    return out
