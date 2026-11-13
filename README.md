@@ -167,27 +167,28 @@ sat catalog configs/phoenix.yaml    # maps for 8 hours, COGs + STAC     -> data/
 
 | Local time (MST) | ERA5 mean | Corrected mean | Correction, 5th-95th percentile | Spread across the city (95th-5th) |
 |---|---:|---:|---|---:|
-| 15 Jan 05:00 | 10.8 | 10.0 | -2.0 to +1.4 | 4.7 |
-| 15 Jan 15:00 | 14.7 | 14.5 | -0.6 to +0.4 | 6.4 |
-| 15 Apr 05:00 | 12.4 | 11.5 | -3.0 to +2.4 | 7.5 |
-| 15 Apr 15:00 | 28.2 | 27.9 | -0.7 to +0.3 | 2.6 |
-| 15 Jul 05:00 | 31.8 | 30.6 | -2.5 to +1.5 | 6.8 |
+| 15 Jan 05:00 | 10.9 | 10.0 | -2.0 to +1.4 | 4.6 |
+| 15 Jan 15:00 | 14.7 | 14.5 | -0.6 to +0.4 | 6.2 |
+| 15 Apr 05:00 | 12.4 | 11.4 | -3.0 to +2.5 | 7.5 |
+| 15 Apr 15:00 | 28.2 | 27.9 | -0.7 to +0.2 | 2.3 |
+| 15 Jul 05:00 | 31.8 | 30.6 | -2.6 to +1.6 | 6.7 |
 | 15 Jul 15:00 | 45.3 | 44.5 | -1.6 to -0.1 | 3.3 |
-| 15 Oct 05:00 | 17.4 | 17.4 | -2.0 to +3.2 | 6.6 |
-| 15 Oct 15:00 | 36.2 | 36.0 | -0.7 to +0.5 | 2.5 |
+| 15 Oct 05:00 | 17.5 | 17.4 | -2.1 to +3.3 | 6.8 |
+| 15 Oct 15:00 | 36.2 | 36.0 | -0.7 to +0.5 | 2.4 |
 
 - **Night corrections are 3 to 5 times wider than afternoon ones**, consistent with the station results: local surroundings matter most before dawn, when the urban heat island and irrigation cooling are strongest.
+- **The maps show the expected physics.** At 05:00 in July the built-up core is the warmest area (about 33-34 °C) while farmland, the Salt River bed and the desert are cooler; at 15:00 the open desert to the west is hottest and the irrigated city and farms are 1-2 °C cooler (the "oasis" effect). Straight edges that remain are real land-use boundaries, such as the edge of development along the Gila River Indian Community.
 
 **Where the maps apply** (area of applicability, threshold 0.483; the training stations' own values span 0.24-0.48):
 
 | Zone | Share of land | Inside |
 |---|---:|---:|
-| Farmland (grass/crop at least 30% within 500 m) | 14% | **82%** |
-| Urban (built-up at least 30% within 500 m) | 32% | **52%** |
-| Natural desert (shrub at least 50% within 500 m) | 36% | 3% |
-| All land | 100% | 40% |
+| Farmland (grass/crop at least 30% within 500 m) | 14% | **85%** |
+| Urban (built-up at least 30% within 500 m) | 32% | **61%** |
+| Natural desert (shrub at least 50% within 500 m) | 36% | 4% |
+| All land | 100% | 44% |
 
-- The maps are usable for most farmland and about half of the urban area. The rest of the city differs from all 15 stations, which are airports, parks and farms; dense residential blocks are the likely gap. The surrounding Sonoran Desert and the mountains are outside: no station sits there.
+- The maps are usable for most farmland and about 60% of the urban area. The rest of the city differs from all 15 stations, which are airports, parks and farms; dense residential blocks are the likely gap. The surrounding Sonoran Desert and the mountains are outside: no station sits there.
 - **The way to widen it is stations, not modelling:** sensors inside residential neighbourhoods and in open desert would extend the area of applicability directly.
 
 ## Roadmap
