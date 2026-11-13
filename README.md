@@ -4,7 +4,7 @@
 
 Estimating street-level 2 m **air** temperature in Phoenix from coarse ERA5 reanalysis (~25 km), land cover, vegetation and elevation, validated on weather stations the model never saw.
 
-**Status:** milestones 1-4 done: 15 stations, a correction that cuts ERA5's error at unseen stations by 19%, a STAC catalog of 100 m maps with an area of applicability, and a FastAPI service in Docker. Model, temperature catalog and API come next (see [Roadmap](#roadmap)).
+**Status:** milestones 1-5 done: 15 stations, a correction that cuts ERA5's error at unseen stations by 20%, a STAC catalog of 100 m maps with an area of applicability, a FastAPI service in Docker, and an LLM experiment agent whose tuning was confirmed on the full evaluation.
 
 Companion to [Urban-Heat-Downscaling](https://github.com/SaraEwaida/Urban-Heat-Downscaling), which downscales satellite **land surface** temperature. Surface temperature is the skin of roofs, roads and sand; air temperature at 2 m is what people feel. This project targets the second.
 
@@ -123,23 +123,23 @@ Every number is from stations the model never saw (leave one station out, 15 fol
 | ERA5 + lapse rate | 1.41 | 1.90 | +0.84 | 1.76 | 1.10 | 0.96 |
 | ERA5 + constant offset | 1.26 | 1.72 | 0.00 | 1.62 | 0.94 | 0.68 |
 | Ridge | 1.14 | 1.51 | -0.01 | **1.26** | 1.04 | **0.26** |
-| **LightGBM** | **1.03** | **1.39** | -0.01 | 1.30 | **0.80** | 0.52 |
+| **LightGBM** | **1.02** | **1.37** | -0.05 | 1.27 | **0.80** | 0.50 |
 
 "Mean absolute station offset" is the average, over held-out stations, of the size of each station's mean error: how well a method gets a place's typical warmth or coolness right.
 
 | Network | Raw ERA5 MAE | Ridge MAE | LightGBM MAE |
 |---|---:|---:|---:|
-| NOAA airports (76,899 h) | 1.12 | 1.05 | 1.03 |
-| AZMet turf and farmland (43,718 h) | 1.54 | 1.31 | **1.03** |
+| NOAA airports (76,899 h) | 1.12 | 1.05 | **1.02** |
+| AZMet turf and farmland (43,718 h) | 1.54 | 1.31 | **1.01** |
 
 ![Error by hour](outputs/figures/error_by_hour.png)
 ![Error by station](outputs/figures/error_by_station.png)
 
-- **LightGBM cuts the error at unseen stations by 19%** (1.27 to 1.03 °C) and removes the overall warm bias of ERA5.
-- **The gain is largest where ERA5 is worst:** irrigated and agricultural AZMet sites go from 1.54 to 1.03 °C, for example Phoenix Greenway 1.21 to 0.72 and Queen Creek 1.91 to 1.26.
-- **Ridge and LightGBM are good at different things.** Ridge is best at night and gets each station's typical offset far closer (0.26 vs 0.52 °C): with few stations, a smooth linear site effect generalises better than tree splits. LightGBM is clearly best by day, where the correction depends on weather and time; Ridge is in fact worse than raw ERA5 between about 10:00 and 17:00, because a fixed linear site effect suits the night but over-corrects in the afternoon. Combining the two is the obvious next step.
+- **LightGBM cuts the error at unseen stations by 20%** (1.27 to 1.02 °C) and removes the overall warm bias of ERA5. These are the tuned settings found by the experiment agent (`num_leaves=31`, `min_child_samples=100`); with the original settings the figures were 1.03 °C and 19%.
+- **The gain is largest where ERA5 is worst:** irrigated and agricultural AZMet sites go from 1.54 to 1.01 °C, for example Phoenix Greenway 1.21 to 0.70 and Buckeye 1.69 to 0.98.
+- **Ridge and LightGBM are good at different things.** At night they are level (1.26 vs 1.27 °C), and Ridge gets each station's typical offset far closer (0.26 vs 0.50 °C): with few stations, a smooth linear site effect generalises better than tree splits. LightGBM is clearly best by day, where the correction depends on weather and time; Ridge is in fact worse than raw ERA5 between about 10:00 and 17:00, because a fixed linear site effect suits the night but over-corrects in the afternoon. Combining the two is the obvious next step.
 - **A standard lapse-rate correction makes ERA5 worse.** At night cold air collects in the low parts of the basin, so lower is not warmer; a fixed -6.5 °C/km adjustment fails here.
-- **Most important LightGBM features:** built-up fraction within 100 m (20% of gain), ERA5 humidity (9%), hour of day (7%), height relative to the ERA5 cell (7%), built-up within 500 m (6%), solar radiation (6%).
+- **Most important LightGBM features:** built-up fraction within 100 m (18% of gain), ERA5 humidity (8%), hour of day (6% each for its sine and cosine), wind speed (6%), and ERA5's 3-hour temperature change (6%).
 - **Not uniform across stations.** LightGBM is worse than raw ERA5 at three west-side airports (Luke, Glendale, Goodyear) and Ridge at Deer Valley and Desert Ridge. With 15 stations, per-station results are noisy, and more stations (or more years) are the main way to firm them up.
 
 ## Reproduce milestone 3: temperature catalog
@@ -298,7 +298,9 @@ Remaining problems in its conclusions:
 - **An untested claim:** "no gain beyond 31 leaves"; with `min_child_samples=100` it never tried more than 31.
 - **A suggestion already in place:** sine/cosine time encodings, which the model already uses.
 
-**Human decision from both runs:** the tuned settings (`num_leaves=31`, `min_child_samples=100`) cut MAE from 1.065 to 1.018 °C on the subsampled rows; land cover is by far the most important feature group, especially at night. Before adopting them, the full leave-one-station-out evaluation should be rerun on all hours, and the vegetation result checked across seeds.
+**Human decision from both runs:** the tuned settings (`num_leaves=31`, `min_child_samples=100`) cut MAE from 1.065 to 1.018 °C on the subsampled rows; land cover is by far the most important feature group, especially at night.
+
+**Confirmed on all hours, with a smaller gain.** Rerunning the full leave-one-station-out evaluation (120,617 station-hours) with the tuned settings gives LightGBM MAE 1.016 °C, down from 1.032 °C: an improvement of 0.016 °C, against 0.047 °C on every 3rd hour. The direction held, the size did not; gains measured on a subsample should be confirmed on the full data before they are reported. The tuned settings are now the defaults, and the results above use them. The vegetation result is still to be checked across seeds.
 
 The agent now also stops as soon as the report is written (one extra request after the report exceeded the free tier's 8,000-token limit in the second run) and ends cleanly on provider errors, keeping all results.
 
@@ -308,7 +310,7 @@ The agent now also stops as soon as the report is written (one extra request aft
 2. Model: Ridge and LightGBM corrections to ERA5, validated by leaving whole stations out, against raw, lapse-rate and constant-offset ERA5; errors by hour of day, station and network.
 3. Temperature catalog: 100 m air-temperature maps as Cloud-Optimised GeoTIFFs, indexed in a STAC catalog, with an area of applicability.
 4. Service: FastAPI endpoint (location and time in, temperature out) in Docker.
-5. Experiment agent: LLM-driven hyperparameter and feature studies through validated tools (this milestone).
+5. Experiment agent: LLM-driven hyperparameter and feature studies through validated tools; its tuning confirmed on the full evaluation and adopted.
 
 ## Layout
 
