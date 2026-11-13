@@ -46,7 +46,7 @@ catalog:
 
 # LLM agent that runs experiments through validated tools (sat agent)
 agent:
-  provider: anthropic           # anthropic | openai | ollama (free, local)
+  provider: groq                # groq (free, no card) | ollama (free, local) | anthropic | openai
   max_experiments: 8
   hour_stride: 3                # every 3rd hour of the station table: same rows for every run, 3x faster
   out_dir: outputs/agent

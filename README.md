@@ -238,9 +238,10 @@ An LLM agent runs ML experiments on this pipeline through a small set of validat
 
 ```bash
 pip install -e ".[agent]"
-sat agent configs/phoenix.yaml --provider anthropic                     # needs ANTHROPIC_API_KEY
-sat agent configs/phoenix.yaml --provider openai                        # needs OPENAI_API_KEY
+sat agent configs/phoenix.yaml --provider groq                          # free: GROQ_API_KEY from console.groq.com, no card
 sat agent configs/phoenix.yaml --provider ollama --model qwen2.5:7b    # free, local (ollama.com)
+sat agent configs/phoenix.yaml --provider anthropic                     # ANTHROPIC_API_KEY
+sat agent configs/phoenix.yaml --provider openai                        # OPENAI_API_KEY
 sat agent configs/phoenix.yaml --goal "Is the 100 m land cover needed, or is 500 m enough?"
 ```
 
@@ -256,7 +257,7 @@ Design choices that make the agent safe to run unattended:
 - **Validated tools, not code execution.** The agent cannot edit data or code. Hyperparameters are checked against allowed ranges, feature groups against a fixed list, and each session has an experiment budget (8 by default). Invalid requests come back as error messages the agent can correct.
 - **Numbers come from the logs, not the model.** The agent writes the interpretation; the results table and the full tool log (every call, its arguments, result and run time) are appended by code. If the agent stops without writing a report, one is written anyway.
 - **Comparable, fast runs.** Every experiment uses the same rows (every 3rd hour of the station table, configurable) and the same leave-one-station-out folds, so a study of 8 runs takes minutes.
-- **Provider-agnostic.** Claude (Anthropic API), OpenAI, or any OpenAI-compatible local server such as Ollama. Tests run the whole loop with a scripted provider and check both API adapters against their message formats, so CI never calls a model.
+- **Provider-agnostic.** Groq's free tier (Llama 3.3 70B), a local model through Ollama, Claude or OpenAI. Rate limits on free tiers are handled by waiting and retrying, and tool results are kept short to stay within token limits. Tests run the whole loop with a scripted provider and check both API adapters against their message formats, so CI never calls a model.
 
 ## Roadmap
 

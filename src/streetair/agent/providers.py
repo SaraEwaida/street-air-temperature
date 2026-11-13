@@ -1,8 +1,8 @@
 """LLM adapters with tool use. Each keeps its own message history in its provider's format.
 
 - AnthropicProvider: Claude via the Anthropic Messages API (needs ANTHROPIC_API_KEY)
-- OpenAIProvider:    OpenAI Chat Completions, or any compatible server such as Ollama
-                     (base_url http://localhost:11434/v1, no key needed)
+- OpenAIProvider:    OpenAI Chat Completions, or any compatible server: Groq (free tier, no credit
+                     card) or Ollama (free, local; base_url http://localhost:11434/v1, no key)
 - ScriptedProvider:  a fixed sequence of tool calls, for tests and CI (no network)
 """
 
@@ -60,13 +60,16 @@ class AnthropicProvider:
 
 
 class OpenAIProvider:
-    def __init__(self, model: str = "gpt-4.1-mini", base_url: str | None = None, api_key: str | None = None):
+    def __init__(self, model: str = "gpt-4.1-mini", base_url: str | None = None, api_key: str | None = None,
+                 max_retries: int = 2):
         import openai
 
         key = api_key or os.environ.get("OPENAI_API_KEY") or ("ollama" if base_url else None)
         if not key:
             raise RuntimeError("Set OPENAI_API_KEY, or pass --base-url for a local server such as Ollama")
-        self.client, self.model = openai.OpenAI(base_url=base_url, api_key=key), model
+        # max_retries: the SDK waits and retries on rate limits (HTTP 429), which free tiers hit often
+        self.client = openai.OpenAI(base_url=base_url, api_key=key, max_retries=max_retries)
+        self.model = model
         self.messages: list[dict[str, Any]] = []
 
     def start(self, system: str, tools: list[dict], goal: str) -> Turn:
@@ -125,4 +128,10 @@ def make_provider(name: str, model: str | None = None, base_url: str | None = No
         return OpenAIProvider(model or "gpt-4.1-mini", base_url)
     if name == "ollama":
         return OpenAIProvider(model or "qwen2.5:7b", base_url or "http://localhost:11434/v1")
-    raise ValueError(f"Unknown provider {name!r}; use anthropic, openai or ollama")
+    if name == "groq":   # free tier, no credit card: console.groq.com
+        key = os.environ.get("GROQ_API_KEY")
+        if not key:
+            raise RuntimeError("Set GROQ_API_KEY (free key, no credit card, from console.groq.com)")
+        return OpenAIProvider(model or "llama-3.3-70b-versatile", base_url or "https://api.groq.com/openai/v1",
+                              api_key=key, max_retries=8)
+    raise ValueError(f"Unknown provider {name!r}; use anthropic, openai, groq or ollama")

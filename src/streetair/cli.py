@@ -232,7 +232,8 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("step", choices=[*STEPS, "all", "agent"])
     p.add_argument("config")
     g = p.add_argument_group("agent options")
-    g.add_argument("--provider", choices=["anthropic", "openai", "ollama"], help="LLM provider (default from config)")
+    g.add_argument("--provider", choices=["anthropic", "openai", "groq", "ollama"],
+                   help="LLM provider (default from config); groq and ollama are free")
     g.add_argument("--model", help="model name, e.g. claude-sonnet-5-5 or qwen2.5:7b")
     g.add_argument("--base-url", help="OpenAI-compatible server URL (Ollama: http://localhost:11434/v1)")
     g.add_argument("--goal", help="task for the agent (default: hyperparameter and feature study)")

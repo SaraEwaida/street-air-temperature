@@ -192,7 +192,10 @@ class Toolbox:
                "rows": int(len(oof)), "hour_stride": self.hour_stride, "seconds": round(time.time() - t0, 1),
                "finished_utc": datetime.now(timezone.utc).isoformat(timespec="seconds")}
         (self.out / "experiments" / f"{name}.json").write_text(json.dumps(rec, indent=2))
-        return {**rec, "budget_left": self.max_experiments - self.experiments_run}
+        # Compact answer for the model (free tiers limit tokens); the full record is on disk
+        return {"name": name, "changes": params, "dropped_groups": drop, "n_features": len(feats),
+                "lightgbm": rec["lightgbm"], "era5_raw_mae_c": rec["era5_raw"]["mae_c"],
+                "lightgbm_mae_by_network": nets, "budget_left": self.max_experiments - self.experiments_run}
 
     def _records(self) -> list[dict[str, Any]]:
         return [json.loads(p.read_text()) for p in sorted((self.out / "experiments").glob("*.json"))]
@@ -253,7 +256,7 @@ def _short(result: dict[str, Any]) -> str:
     if "error" in result:
         return "error: " + result["error"]
     if "lightgbm" in result:
-        return f"MAE {result['lightgbm']['mae_c']:.3f} (ERA5 {result['era5_raw']['mae_c']:.3f})"
+        return f"MAE {result['lightgbm']['mae_c']:.3f} (ERA5 {result['era5_raw_mae_c']:.3f})"
     if "issues" in result:
         return f"{result['stations']} stations; issues: {'; '.join(result['issues'])}"
     if "experiments" in result:
