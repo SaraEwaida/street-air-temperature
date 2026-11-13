@@ -232,13 +232,39 @@ ERA5 puts these places within about 2 °C of each other; after correction they s
 - Points outside the mapped area, on water, or at hours not yet in the ERA5 archive (which lags real time by several days) return HTTP 422 with an explanation.
 - CI builds the Docker image on every push and checks that the API loads inside it.
 
+## Experiment agent
+
+An LLM agent runs ML experiments on this pipeline through a small set of validated tools: it checks the data, plans a hyperparameter and feature study, runs leave-one-station-out evaluations, compares them and writes a report for the ML team.
+
+```bash
+pip install -e ".[agent]"
+sat agent configs/phoenix.yaml --provider anthropic                     # needs ANTHROPIC_API_KEY
+sat agent configs/phoenix.yaml --provider openai                        # needs OPENAI_API_KEY
+sat agent configs/phoenix.yaml --provider ollama --model qwen2.5:7b    # free, local (ollama.com)
+sat agent configs/phoenix.yaml --goal "Is the 100 m land cover needed, or is 500 m enough?"
+```
+
+| Tool | What it does |
+|---|---|
+| `check_data` | stations, coverage, missing values per feature, value ranges, duplicates, gaps |
+| `run_experiment` | leave-one-station-out LightGBM with chosen hyperparameters and/or feature groups dropped; MAE, RMSE, bias overall, night/day and per network, next to raw ERA5 on the same rows |
+| `list_experiments`, `compare_experiments` | read back logged results |
+| `write_report` | markdown report in `outputs/agent/reports/` |
+
+Design choices that make the agent safe to run unattended:
+
+- **Validated tools, not code execution.** The agent cannot edit data or code. Hyperparameters are checked against allowed ranges, feature groups against a fixed list, and each session has an experiment budget (8 by default). Invalid requests come back as error messages the agent can correct.
+- **Numbers come from the logs, not the model.** The agent writes the interpretation; the results table and the full tool log (every call, its arguments, result and run time) are appended by code. If the agent stops without writing a report, one is written anyway.
+- **Comparable, fast runs.** Every experiment uses the same rows (every 3rd hour of the station table, configurable) and the same leave-one-station-out folds, so a study of 8 runs takes minutes.
+- **Provider-agnostic.** Claude (Anthropic API), OpenAI, or any OpenAI-compatible local server such as Ollama. Tests run the whole loop with a scripted provider and check both API adapters against their message formats, so CI never calls a model.
+
 ## Roadmap
 
 1. Station data pipeline: stations, QC, ERA5, site features, joined table.
 2. Model: Ridge and LightGBM corrections to ERA5, validated by leaving whole stations out, against raw, lapse-rate and constant-offset ERA5; errors by hour of day, station and network.
 3. Temperature catalog: 100 m air-temperature maps as Cloud-Optimised GeoTIFFs, indexed in a STAC catalog, with an area of applicability.
-4. Service: FastAPI endpoint (location and time in, temperature out) in Docker (this milestone).
-5. Results and limitations write-up.
+4. Service: FastAPI endpoint (location and time in, temperature out) in Docker.
+5. Experiment agent: LLM-driven hyperparameter and feature studies through validated tools (this milestone).
 
 ## Layout
 
@@ -255,6 +281,7 @@ src/streetair/
   catalog.py           per-pixel prediction, COG writing, STAC collection
   service.py           point prediction (same computation as the maps), live ERA5 with cache
   api.py               FastAPI app
+  agent/               experiment agent: tools with guardrails, LLM adapters, loop
 Dockerfile             API image (code only; data mounted at run time)
   plots.py             station map, error by hour, error by station, map figure
   cli.py               `sat` command

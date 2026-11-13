@@ -1,4 +1,4 @@
-"""Command line: sat stations | era5 | features | build | map | model | grid | catalog | all."""
+"""Command line: sat stations | era5 | features | build | map | model | grid | catalog | all | agent."""
 
 from __future__ import annotations
 
@@ -214,12 +214,35 @@ STEPS = {"stations": _stations, "era5": _era5, "features": _features, "build": _
          "model": _model, "grid": _grid, "catalog": _catalog}
 
 
+def _agent(cfg, args):
+    from .agent import DEFAULT_GOAL, Toolbox, make_provider, run_agent
+
+    a = cfg.get("agent", {})
+    provider = make_provider(args.provider or a.get("provider", "anthropic"), args.model or a.get("model"),
+                             args.base_url or a.get("base_url"))
+    tb = Toolbox(cfg, pd.read_parquet(cfg["paths"]["dataset"]), a.get("out_dir", "outputs/agent"),
+                 max_experiments=args.max_experiments or a.get("max_experiments", 8),
+                 hour_stride=a.get("hour_stride", 3))
+    res = run_agent(provider, tb, goal=args.goal or a.get("goal", DEFAULT_GOAL))
+    print(f"Agent finished: {res['steps']} steps, {res['experiments']} experiments. Report: {', '.join(res['reports'])}")
+
+
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(prog="sat", description="Street-level air temperature pipeline")
-    p.add_argument("step", choices=[*STEPS, "all"])
+    p.add_argument("step", choices=[*STEPS, "all", "agent"])
     p.add_argument("config")
+    g = p.add_argument_group("agent options")
+    g.add_argument("--provider", choices=["anthropic", "openai", "ollama"], help="LLM provider (default from config)")
+    g.add_argument("--model", help="model name, e.g. claude-sonnet-5-5 or qwen2.5:7b")
+    g.add_argument("--base-url", help="OpenAI-compatible server URL (Ollama: http://localhost:11434/v1)")
+    g.add_argument("--goal", help="task for the agent (default: hyperparameter and feature study)")
+    g.add_argument("--max-experiments", type=int, help="experiment budget")
     args = p.parse_args(argv)
     cfg = load_config(args.config)
+    if args.step == "agent":
+        print("== agent", flush=True)
+        _agent(cfg, args)
+        return
     for name in (STEPS if args.step == "all" else [args.step]):
         print(f"== {name}", flush=True)
         STEPS[name](cfg)

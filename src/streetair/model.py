@@ -72,40 +72,45 @@ def _lgbm(p: dict[str, Any]):
         colsample_bytree=p["feature_fraction"], random_state=p.get("seed", 0), verbose=-1)
 
 
-def fit_predict(train: pd.DataFrame, test: pd.DataFrame, cfg: dict[str, Any], features: list[str]) -> dict[str, np.ndarray]:
-    """Predictions for the test rows from every method, fitted on the train rows only."""
+def fit_predict(train: pd.DataFrame, test: pd.DataFrame, cfg: dict[str, Any], features: list[str],
+                methods: tuple[str, ...] = tuple(METHODS)) -> dict[str, np.ndarray]:
+    """Predictions for the test rows from the requested methods, fitted on the train rows only."""
     m = cfg["model"]
     y = (train.t_obs - train.t_era5).to_numpy()
-    out = {
-        "era5_raw": test.t_era5.to_numpy(),
-        "era5_lapse": test.t_era5_elev.to_numpy(),
-        "era5_bias": test.t_era5.to_numpy() + y.mean(),
-    }
-    ridge = _ridge(m["ridge_alpha"]).fit(_ridge_matrix(train, features), y)
-    out["ridge"] = test.t_era5.to_numpy() + ridge.predict(_ridge_matrix(test, features))
-    gbm = _lgbm(m["lightgbm"]).fit(train[features], y)
-    out["lightgbm"] = test.t_era5.to_numpy() + gbm.predict(test[features])
+    out = {"era5_raw": test.t_era5.to_numpy()}
+    if "era5_lapse" in methods:
+        out["era5_lapse"] = test.t_era5_elev.to_numpy()
+    if "era5_bias" in methods:
+        out["era5_bias"] = test.t_era5.to_numpy() + y.mean()
+    if "ridge" in methods:
+        ridge = _ridge(m["ridge_alpha"]).fit(_ridge_matrix(train, features), y)
+        out["ridge"] = test.t_era5.to_numpy() + ridge.predict(_ridge_matrix(test, features))
+    if "lightgbm" in methods:
+        gbm = _lgbm(m["lightgbm"]).fit(train[features], y)
+        out["lightgbm"] = test.t_era5.to_numpy() + gbm.predict(test[features])
     return out
 
 
-def leave_one_station_out(df: pd.DataFrame, cfg: dict[str, Any], verbose: bool = True) -> pd.DataFrame:
-    """Out-of-fold predictions for every station-hour."""
+def leave_one_station_out(df: pd.DataFrame, cfg: dict[str, Any], verbose: bool = True,
+                          features: list[str] | None = None, methods: tuple[str, ...] = tuple(METHODS)) -> pd.DataFrame:
+    """Out-of-fold predictions for every station-hour. `features` defaults to every available feature."""
     df = add_time_features(df)
-    features = feature_list(df)
+    features = features or feature_list(df)
     keep = ["station", "icao", "network", "time", "hour_local", "is_night", "month", "t_obs"]
     folds = []
     for st in sorted(df.station.unique()):
         test = df[df.station == st]
         train = df[df.station != st]
-        preds = fit_predict(train, test, cfg, features)
+        preds = fit_predict(train, test, cfg, features, methods)
         f = test[[c for c in keep if c in test]].copy()
         for k, v in preds.items():
             f[f"pred_{k}"] = v
         folds.append(f)
         if verbose:
             mae = {k: np.abs(v - test.t_obs.to_numpy()).mean() for k, v in preds.items()}
-            print(f"  held out {test.icao.iloc[0]:<5} ERA5 MAE {mae['era5_raw']:.2f}  LightGBM {mae['lightgbm']:.2f}  "
-                  f"Ridge {mae['ridge']:.2f} C", flush=True)
+            names = {"era5_raw": "ERA5", "lightgbm": "LightGBM", "ridge": "Ridge"}
+            print(f"  held out {test.icao.iloc[0]:<5} " + "  ".join(f"{names[k]} {mae[k]:.2f}" for k in names if k in mae)
+                  + " C", flush=True)
     return pd.concat(folds, ignore_index=True)
 
 
@@ -117,7 +122,7 @@ def _scores(err: np.ndarray) -> dict[str, float]:
 def summarise(oof: pd.DataFrame) -> dict[str, pd.DataFrame]:
     """Overall, per-station and per-hour scores. Errors are prediction minus station."""
     rows, by_station, by_hour = [], [], []
-    for m in METHODS:
+    for m in [m for m in METHODS if f"pred_{m}" in oof]:
         e = oof[f"pred_{m}"] - oof.t_obs
         per_st = oof.assign(e=e).groupby("station").e
         rows.append({"method": m, **_scores(e.to_numpy()),

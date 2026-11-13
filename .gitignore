@@ -12,3 +12,4 @@ outputs/figures/*
 !outputs/figures/.gitkeep
 !outputs/*.csv
 !outputs/*.json
+!outputs/agent/

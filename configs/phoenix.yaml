@@ -44,6 +44,13 @@ catalog:
                 "2023-07-15T05:00", "2023-07-15T15:00", "2023-10-15T05:00", "2023-10-15T15:00"]
   figure_times_local: ["2023-07-15T05:00", "2023-07-15T15:00"]
 
+# LLM agent that runs experiments through validated tools (sat agent)
+agent:
+  provider: anthropic           # anthropic | openai | ollama (free, local)
+  max_experiments: 8
+  hour_stride: 3                # every 3rd hour of the station table: same rows for every run, 3x faster
+  out_dir: outputs/agent
+
 paths:
   stations: data/phoenix/stations.csv
   observations: data/phoenix/observations.parquet

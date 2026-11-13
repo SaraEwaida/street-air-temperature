@@ -58,9 +58,9 @@ def test_every_row_predicted_once_by_a_model_that_never_saw_its_station(oof, mon
     seen = []
     real = model.fit_predict
 
-    def spy(train, test, cfg, features):
+    def spy(train, test, cfg, features, methods=tuple(model.METHODS)):
         seen.append((set(train.station), set(test.station)))
-        return real(train, test, cfg, features)
+        return real(train, test, cfg, features, methods)
 
     monkeypatch.setattr(model, "fit_predict", spy)
     model.leave_one_station_out(make_data(n_st=4, days=3), CFG, verbose=False)
