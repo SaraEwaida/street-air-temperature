@@ -1,0 +1,40 @@
+{
+  "name": "baseline",
+  "rationale": "Baseline LightGBM with default settings using all feature groups.",
+  "params": {},
+  "lightgbm_params": {
+    "n_estimators": 400,
+    "learning_rate": 0.05,
+    "num_leaves": 15,
+    "min_child_samples": 2000,
+    "feature_fraction": 0.8,
+    "bagging_fraction": 0.8,
+    "seed": 0
+  },
+  "dropped_groups": [],
+  "n_features": 26,
+  "lightgbm": {
+    "mae_c": 1.065,
+    "rmse_c": 1.427,
+    "bias_c": 0.013,
+    "mae_night_c": 1.357,
+    "mae_day_c": 0.816,
+    "station_bias_abs_mean_c": 0.523
+  },
+  "era5_raw": {
+    "mae_c": 1.286,
+    "rmse_c": 1.769,
+    "bias_c": 0.489,
+    "mae_night_c": 1.662,
+    "mae_day_c": 0.966,
+    "station_bias_abs_mean_c": 0.742
+  },
+  "lightgbm_mae_by_network": {
+    "azmet": 1.073,
+    "noaa-isd": 1.061
+  },
+  "rows": 39909,
+  "hour_stride": 3,
+  "seconds": 24.2,
+  "finished_utc": "2026-11-13T09:03:13+00:00"
+}

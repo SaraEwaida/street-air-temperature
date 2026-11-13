@@ -1,0 +1,45 @@
+{
+  "name": "lr002_n800",
+  "rationale": "Test regularization: lower LR with more trees.",
+  "params": {
+    "learning_rate": 0.02,
+    "min_child_samples": 100,
+    "n_estimators": 800,
+    "num_leaves": 31
+  },
+  "lightgbm_params": {
+    "n_estimators": 800,
+    "learning_rate": 0.02,
+    "num_leaves": 31,
+    "min_child_samples": 100,
+    "feature_fraction": 0.8,
+    "bagging_fraction": 0.8,
+    "seed": 0
+  },
+  "dropped_groups": [],
+  "n_features": 26,
+  "lightgbm": {
+    "mae_c": 1.024,
+    "rmse_c": 1.373,
+    "bias_c": -0.041,
+    "mae_night_c": 1.298,
+    "mae_day_c": 0.791,
+    "station_bias_abs_mean_c": 0.49
+  },
+  "era5_raw": {
+    "mae_c": 1.286,
+    "rmse_c": 1.769,
+    "bias_c": 0.489,
+    "mae_night_c": 1.662,
+    "mae_day_c": 0.966,
+    "station_bias_abs_mean_c": 0.742
+  },
+  "lightgbm_mae_by_network": {
+    "azmet": 1.025,
+    "noaa-isd": 1.024
+  },
+  "rows": 39909,
+  "hour_stride": 3,
+  "seconds": 35.9,
+  "finished_utc": "2026-11-13T09:05:42+00:00"
+}

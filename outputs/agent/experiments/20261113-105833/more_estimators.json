@@ -1,0 +1,42 @@
+{
+  "name": "more_estimators",
+  "rationale": "Increase number of trees to see if more capacity helps.",
+  "params": {
+    "n_estimators": 800
+  },
+  "lightgbm_params": {
+    "n_estimators": 800,
+    "learning_rate": 0.05,
+    "num_leaves": 15,
+    "min_child_samples": 2000,
+    "feature_fraction": 0.8,
+    "bagging_fraction": 0.8,
+    "seed": 0
+  },
+  "dropped_groups": [],
+  "n_features": 26,
+  "lightgbm": {
+    "mae_c": 1.046,
+    "rmse_c": 1.404,
+    "bias_c": 0.014,
+    "mae_night_c": 1.331,
+    "mae_day_c": 0.803,
+    "station_bias_abs_mean_c": 0.518
+  },
+  "era5_raw": {
+    "mae_c": 1.286,
+    "rmse_c": 1.769,
+    "bias_c": 0.489,
+    "mae_night_c": 1.662,
+    "mae_day_c": 0.966,
+    "station_bias_abs_mean_c": 0.742
+  },
+  "lightgbm_mae_by_network": {
+    "azmet": 1.044,
+    "noaa-isd": 1.047
+  },
+  "rows": 39909,
+  "hour_stride": 3,
+  "seconds": 25.1,
+  "finished_utc": "2026-11-13T08:59:48+00:00"
+}

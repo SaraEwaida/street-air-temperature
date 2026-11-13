@@ -1,0 +1,45 @@
+{
+  "name": "drop_vegetation",
+  "rationale": "Ablation of vegetation features to assess importance.",
+  "params": {
+    "min_child_samples": 100,
+    "num_leaves": 31
+  },
+  "lightgbm_params": {
+    "n_estimators": 400,
+    "learning_rate": 0.05,
+    "num_leaves": 31,
+    "min_child_samples": 100,
+    "feature_fraction": 0.8,
+    "bagging_fraction": 0.8,
+    "seed": 0
+  },
+  "dropped_groups": [
+    "vegetation"
+  ],
+  "n_features": 24,
+  "lightgbm": {
+    "mae_c": 1.001,
+    "rmse_c": 1.348,
+    "bias_c": -0.036,
+    "mae_night_c": 1.271,
+    "mae_day_c": 0.77,
+    "station_bias_abs_mean_c": 0.459
+  },
+  "era5_raw": {
+    "mae_c": 1.286,
+    "rmse_c": 1.769,
+    "bias_c": 0.489,
+    "mae_night_c": 1.662,
+    "mae_day_c": 0.966,
+    "station_bias_abs_mean_c": 0.742
+  },
+  "lightgbm_mae_by_network": {
+    "azmet": 1.002,
+    "noaa-isd": 1.0
+  },
+  "rows": 39909,
+  "hour_stride": 3,
+  "seconds": 17.7,
+  "finished_utc": "2026-11-13T09:04:25+00:00"
+}
