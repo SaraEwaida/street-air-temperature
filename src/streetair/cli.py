@@ -162,11 +162,11 @@ def _catalog(cfg):
 
     booster = lgb.Booster(model_file=cfg["paths"]["model_lightgbm"])
     features = json.loads(Path(cfg["paths"]["model_lightgbm"]).with_suffix(".features.json").read_text())
-    cell_idx = catalog.pixel_cells(g, cells)
+    cell_weights = catalog.pixel_cell_weights(g, cells)
     land = np.isfinite(g["features"]["frac_water_100m"]) & (g["features"]["frac_water_100m"] <= cfg["catalog"]["water_threshold"])
     ranges = catalog.training_ranges(pd.read_csv(cfg["paths"]["features"]), pd.read_parquet(cfg["paths"]["dataset"]))
     elev_cell = e.groupby("station").era5_cell_elev_m.first().reindex(cells.station).to_numpy()
-    site = {**g["features"], "elev_minus_cell_m": g["features"]["elev_dem_m"] - elev_cell[cell_idx]}
+    site = {**g["features"], "elev_minus_cell_m": g["features"]["elev_dem_m"] - catalog.interp_cells(elev_cell, *cell_weights)}
     # Area of applicability: distance in importance-weighted site-feature space (Meyer & Pebesma 2021)
     from .model import SITE
 
@@ -195,7 +195,7 @@ def _catalog(cfg):
         et = e[e.time == t]
         if et.empty:
             raise RuntimeError(f"No ERA5 for {t}")
-        maps[t] = catalog.predict_hour(g, cell_idx, et, t, booster, features, land)
+        maps[t] = catalog.predict_hour(g, cell_weights, et, t, booster, features, land)
         print(f"  {t.tz_convert('America/Phoenix'):%Y-%m-%d %H:%M} MST mapped", flush=True)
     info = {"model": "LightGBM residual over raw ERA5", "validation": "leave-one-station-out, 15 stations",
             "features": features, "aoa_threshold": round(thr, 4),

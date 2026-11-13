@@ -1,13 +1,15 @@
 """Air-temperature maps for selected hours, written as Cloud-Optimised GeoTIFFs and indexed
 in a STAC catalog.
 
-For each hour, every land pixel gets: ERA5 temperature of its 0.25 deg cell (the same raw
-grid-cell value the stations were compared with) plus the LightGBM correction predicted from
-the pixel's surroundings, the hour, and the cell's ERA5 weather.
+For each hour, every land pixel gets ERA5 temperature interpolated bilinearly between the 0.25 deg
+cell centres, plus the LightGBM correction predicted from the pixel's surroundings, the hour and
+the (interpolated) ERA5 weather. The stations were compared with raw grid-cell values;
+interpolating for the maps removes artificial steps at cell edges and changes values at the
+stations only slightly, since most lie well inside their cell.
 
 Each item has three assets:
 - temperature: corrected 2 m air temperature (degC)
-- era5: the raw ERA5 value on the same grid, for comparison (degC)
+- era5: ERA5 interpolated to the same grid, for comparison (degC)
 - correction: temperature minus ERA5 (degC)
 The collection has two static assets: `area_of_applicability` (1 where a pixel's surroundings
 are no more unusual than a held-out station's were during validation, after Meyer & Pebesma
@@ -42,13 +44,34 @@ def era5_cells(cfg: dict[str, Any]) -> pd.DataFrame:
                          "lat": LA.ravel().round(3), "lon": LO.ravel().round(3)})
 
 
-def pixel_cells(grid: dict[str, Any], cells: pd.DataFrame) -> np.ndarray:
-    """Index into `cells` of the nearest ERA5 cell centre for every pixel."""
+def pixel_cell_weights(grid: dict[str, Any], cells: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
+    """Bilinear interpolation between ERA5 cell centres: for every pixel, the 4 surrounding cells
+    (indices into `cells`) and their weights. Shapes (4, H, W).
+
+    Without it every pixel takes its whole 25 km cell's value and the map shows the ERA5 grid as
+    straight steps of 1-3 degC that have no physical meaning.
+    """
     lon, lat = pixel_lonlat(grid["transform"], grid["shape"], grid["crs"])
+    lons, lats = np.sort(cells.lon.unique()), np.sort(cells.lat.unique())
     key = {(round(a, 3), round(b, 3)): i for i, (a, b) in enumerate(zip(cells.lon, cells.lat))}
-    snap = lambda v: np.round(np.round(v / ERA5_STEP) * ERA5_STEP, 3)  # noqa: E731
-    sl, sa = snap(lon), snap(lat)
-    return np.vectorize(lambda a, b: key[(a, b)])(sl, sa).astype(np.int32)
+
+    def axis(v, centres):
+        f = np.clip((v - centres[0]) / ERA5_STEP, 0, len(centres) - 1)
+        i0 = np.minimum(np.floor(f).astype(int), len(centres) - 1)
+        i1 = np.minimum(i0 + 1, len(centres) - 1)
+        return i0, i1, (f - i0).astype(np.float32)
+
+    x0, x1, wx = axis(lon, lons)
+    y0, y1, wy = axis(lat, lats)
+    lut = np.vectorize(lambda i, j: key[(round(lons[i], 3), round(lats[j], 3))])
+    idx = np.stack([lut(x0, y0), lut(x1, y0), lut(x0, y1), lut(x1, y1)]).astype(np.int32)
+    w = np.stack([(1 - wx) * (1 - wy), wx * (1 - wy), (1 - wx) * wy, wx * wy]).astype(np.float32)
+    return idx, w
+
+
+def interp_cells(values: np.ndarray, idx: np.ndarray, w: np.ndarray) -> np.ndarray:
+    """Per-cell values -> per-pixel map with the weights from pixel_cell_weights."""
+    return (np.asarray(values, float)[idx] * w).sum(axis=0)
 
 
 def local_times(cfg: dict[str, Any]) -> list[pd.Timestamp]:
@@ -149,18 +172,19 @@ def area_of_applicability(train: pd.DataFrame, grid_feats: dict[str, np.ndarray]
     return di.reshape(shape), thr, di_train
 
 
-def predict_hour(grid: dict[str, Any], cell_idx: np.ndarray, era5_t: pd.DataFrame, time_utc: pd.Timestamp,
-                 booster, features: list[str], land: np.ndarray) -> dict[str, np.ndarray]:
-    """Temperature, ERA5 and correction maps for one hour. era5_t: one row per cell for this hour."""
+def predict_hour(grid: dict[str, Any], cell_weights: tuple[np.ndarray, np.ndarray], era5_t: pd.DataFrame,
+                 time_utc: pd.Timestamp, booster, features: list[str], land: np.ndarray) -> dict[str, np.ndarray]:
+    """Temperature, ERA5 and correction maps for one hour. era5_t: one row per cell for this hour.
+    ERA5 values and weather features are interpolated bilinearly between cell centres."""
+    idx, wts = cell_weights
     shape = grid["shape"]
-    w = era5_t.set_index("station").reindex([f"cell_{i:03d}" for i in range(cell_idx.max() + 1)])
+    w = era5_t.set_index("station").reindex([f"cell_{i:03d}" for i in range(idx.max() + 1)])
     rows = np.nonzero(land.ravel())[0]
-    ci = cell_idx.ravel()[rows]
     df = pd.DataFrame({k: v.ravel()[rows] for k, v in grid["features"].items()})
     for col in ("t_era5", "t_era5_change_3h", "t_era5_day_mean", "era5_wind_ms", "era5_cloud_pct",
                 "era5_sw_wm2", "era5_rh_pct", "era5_cell_elev_m"):
         if col in w:
-            df[col] = w[col].to_numpy()[ci]
+            df[col] = interp_cells(w[col].to_numpy(), idx, wts).ravel()[rows]
     df["elev_minus_cell_m"] = df.elev_dem_m - df.era5_cell_elev_m
     local = time_utc.tz_convert(LOCAL_TZ)
     df["hour_local"], df["doy"] = local.hour, local.dayofyear
@@ -247,7 +271,7 @@ def build_catalog(cfg: dict[str, Any], grid: dict[str, Any], maps: dict[pd.Times
                            datetime=t.to_pydatetime(),
                            properties={**proj, "local_time": t.tz_convert(LOCAL_TZ).isoformat()},
                            stac_extensions=[PROJ_EXT, RASTER_EXT])
-        for name, desc in (("temperature", "Corrected 2 m air temperature"), ("era5", "Raw ERA5 2 m air temperature"),
+        for name, desc in (("temperature", "Corrected 2 m air temperature"), ("era5", "ERA5 2 m air temperature, interpolated between cell centres"),
                            ("correction", "Temperature minus ERA5")):
             path = write_cog(item_dir / f"{name}.tif", maps[t][name], grid)
             item.add_asset(name, pystac.Asset(href=str(path.resolve()), media_type=pystac.MediaType.COG,

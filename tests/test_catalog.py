@@ -42,15 +42,20 @@ def test_grid_fractions_match_station_circles():
     assert g["frac_water_100m"][20, 20] == pytest.approx(1.0)
 
 
-def test_cells_cover_every_pixel():
-    t, shape = grid.grid_spec(CFG, 100)
-    g = {"transform": t, "shape": shape, "crs": CFG["crs"]}
-    cells = catalog.era5_cells(CFG)
-    idx = catalog.pixel_cells(g, cells)
-    assert idx.shape == shape and idx.min() >= 0 and idx.max() < len(cells)
-    lon, lat = grid.pixel_lonlat(t, shape, CFG["crs"])
-    c = cells.iloc[idx[0, 0]]
-    assert abs(c.lon - lon[0, 0]) <= 0.125 + 1e-9 and abs(c.lat - lat[0, 0]) <= 0.125 + 1e-9
+def test_cell_weights_interpolate_smoothly():
+    cfg = {**CFG, "bbox": [-112.30, 33.30, -111.90, 33.60]}       # spans several 0.25 deg cells
+    t, shape = grid.grid_spec(cfg, 500)
+    g = {"transform": t, "shape": shape, "crs": cfg["crs"]}
+    cells = catalog.era5_cells(cfg)
+    idx, w = catalog.pixel_cell_weights(g, cells)
+    assert idx.shape == (4, *shape) and idx.min() >= 0 and idx.max() < len(cells)
+    assert np.allclose(w.sum(axis=0), 1) and (w >= 0).all()
+    # a field linear in lon/lat is reproduced exactly, and has no steps
+    vals = 20 + 4 * cells.lon.to_numpy() + 2 * cells.lat.to_numpy()
+    m = catalog.interp_cells(vals, idx, w)
+    lon, lat = grid.pixel_lonlat(t, shape, cfg["crs"])
+    assert np.allclose(m, 20 + 4 * lon + 2 * lat, atol=1e-3)
+    assert np.abs(np.diff(m, axis=1)).max() < 0.05
 
 
 def test_support_mask_flags_extrapolation():
@@ -97,9 +102,9 @@ def built(tmp_path_factory):
     y = 3 * X.frac_built_500m - 1
     booster = lgb.train({"objective": "regression", "verbose": -1, "num_leaves": 7}, lgb.Dataset(X[feats_order], y), 60)
 
-    cell_idx = catalog.pixel_cells(g, cells)
+    cw = catalog.pixel_cell_weights(g, cells)
     land = feats["frac_water_100m"] <= CFG["catalog"]["water_threshold"]
-    maps = {tm: catalog.predict_hour(g, cell_idx, e[e.time == tm], tm, booster, feats_order, land) for tm in times}
+    maps = {tm: catalog.predict_hour(g, cw, e[e.time == tm], tm, booster, feats_order, land) for tm in times}
     in_range = catalog.support_mask(feats, {"frac_built_500m": (0.0, 0.5)}) & land
     path = catalog.build_catalog(CFG, g, maps, in_range, root / "catalog", {"model": "test"})
     return g, maps, times, in_range, path

@@ -159,7 +159,7 @@ def catalog_maps(maps: dict, times: list, grid: dict, out: str | Path, stations:
         both = np.concatenate([m["era5"][np.isfinite(m["era5"])], m["temperature"][np.isfinite(m["temperature"])]])
         vmin, vmax = np.percentile(both, [1, 99])
         label = tm.tz_convert(LOCAL_TZ).strftime("%d %b %Y, %H:%M MST")
-        for ax, key, title in zip(row, ("era5", "temperature"), ("Raw ERA5 (~25 km)", "Corrected (100 m)")):
+        for ax, key, title in zip(row, ("era5", "temperature"), ("ERA5 (25 km cells, interpolated)", "Corrected (100 m)")):
             im = ax.imshow(m[key], extent=ext, cmap=cmap, vmin=vmin, vmax=vmax, interpolation="nearest")
             ax.set_title(f"{title}: {label}", loc="left", fontsize=10)
             ax.set_aspect("equal")
