@@ -29,8 +29,8 @@ model:
   lightgbm:
     n_estimators: 400
     learning_rate: 0.05
-    num_leaves: 15
-    min_child_samples: 2000     # large leaves: only ~14 distinct sites per fold, avoid memorising them
+    num_leaves: 31              # tuned by the experiment agent (outputs/agent); was 15
+    min_child_samples: 100      # was 2000, which capped trees at ~18 leaves and blocked num_leaves
     feature_fraction: 0.8
     bagging_fraction: 0.8
     seed: 0
