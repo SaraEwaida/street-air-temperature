@@ -4,7 +4,7 @@
 
 Estimating street-level 2 m **air** temperature in Phoenix from coarse ERA5 reanalysis (~25 km), land cover, vegetation and elevation, validated on weather stations the model never saw.
 
-**Status:** milestone 2 done: LightGBM cuts ERA5's error at unseen stations by 19%. Temperature catalog and API come next. Model, temperature catalog and API come next (see [Roadmap](#roadmap)).
+**Status:** milestones 1-3 done: 15 stations, a correction that cuts ERA5's error at unseen stations by 19%, and a STAC catalog of 100 m maps with an area of applicability. The API comes next. Model, temperature catalog and API come next (see [Roadmap](#roadmap)).
 
 Companion to [Urban-Heat-Downscaling](https://github.com/SaraEwaida/Urban-Heat-Downscaling), which downscales satellite **land surface** temperature. Surface temperature is the skin of roofs, roads and sand; air temperature at 2 m is what people feel. This project targets the second.
 
@@ -159,13 +159,42 @@ sat catalog configs/phoenix.yaml    # maps for 8 hours, COGs + STAC     -> data/
 
 ### Milestone 3 results
 
-To be filled after `sat catalog`.
+![July night and afternoon](outputs/figures/air_temperature_july.png)
+
+**Grid features match the station features.** At the 15 station pixels, the 500 m disc features differ from the stations' own 10 m-circle values by at most 0.02 (fractions, NDVI); the 100 m features by up to 0.09 (built-up) because a 100 m disc spans only a few cells of the 50 m base grid (`outputs/grid_feature_check.csv`).
+
+**Corrections by hour** (858,195 land pixels per map, `outputs/catalog_summary.csv`):
+
+| Local time (MST) | ERA5 mean | Corrected mean | Correction, 5th-95th percentile | Spread across the city (95th-5th) |
+|---|---:|---:|---|---:|
+| 15 Jan 05:00 | 10.8 | 10.0 | -2.0 to +1.4 | 4.7 |
+| 15 Jan 15:00 | 14.7 | 14.5 | -0.6 to +0.4 | 6.4 |
+| 15 Apr 05:00 | 12.4 | 11.5 | -3.0 to +2.4 | 7.5 |
+| 15 Apr 15:00 | 28.2 | 27.9 | -0.7 to +0.3 | 2.6 |
+| 15 Jul 05:00 | 31.8 | 30.6 | -2.5 to +1.5 | 6.8 |
+| 15 Jul 15:00 | 45.3 | 44.5 | -1.6 to -0.1 | 3.3 |
+| 15 Oct 05:00 | 17.4 | 17.4 | -2.0 to +3.2 | 6.6 |
+| 15 Oct 15:00 | 36.2 | 36.0 | -0.7 to +0.5 | 2.5 |
+
+- **Night corrections are 3 to 5 times wider than afternoon ones**, consistent with the station results: local surroundings matter most before dawn, when the urban heat island and irrigation cooling are strongest.
+
+**Where the maps apply** (area of applicability, threshold 0.483; the training stations' own values span 0.24-0.48):
+
+| Zone | Share of land | Inside |
+|---|---:|---:|
+| Farmland (grass/crop at least 30% within 500 m) | 14% | **82%** |
+| Urban (built-up at least 30% within 500 m) | 32% | **52%** |
+| Natural desert (shrub at least 50% within 500 m) | 36% | 3% |
+| All land | 100% | 40% |
+
+- The maps are usable for most farmland and about half of the urban area. The rest of the city differs from all 15 stations, which are airports, parks and farms; dense residential blocks are the likely gap. The surrounding Sonoran Desert and the mountains are outside: no station sits there.
+- **The way to widen it is stations, not modelling:** sensors inside residential neighbourhoods and in open desert would extend the area of applicability directly.
 
 ## Roadmap
 
 1. Station data pipeline: stations, QC, ERA5, site features, joined table.
 2. Model: Ridge and LightGBM corrections to ERA5, validated by leaving whole stations out, against raw, lapse-rate and constant-offset ERA5; errors by hour of day, station and network.
-3. Temperature catalog: 100 m air-temperature maps as Cloud-Optimised GeoTIFFs, indexed in a STAC catalog (this milestone).
+3. Temperature catalog: 100 m air-temperature maps as Cloud-Optimised GeoTIFFs, indexed in a STAC catalog, with an area of applicability.
 4. Service: FastAPI endpoint (location and time in, temperature out) in Docker.
 5. Results and limitations write-up.
 
