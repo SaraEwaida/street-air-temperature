@@ -1,0 +1,16 @@
+feature,mean_abs_diff,station_range
+frac_built_100m,0.087,0.722
+frac_built_500m,0.015,0.688
+frac_tree_100m,0.002,0.089
+frac_tree_500m,0.002,0.146
+frac_shrub_100m,0.018,0.278
+frac_shrub_500m,0.007,0.442
+frac_grass_crop_100m,0.04,1.0
+frac_grass_crop_500m,0.01,0.749
+frac_bare_100m,0.078,0.801
+frac_bare_500m,0.008,0.501
+frac_water_100m,0.003,0.076
+frac_water_500m,0.0,0.013
+ndvi_100m,0.021,0.578
+ndvi_500m,0.021,0.503
+elev_dem_m,0.377,222.821
