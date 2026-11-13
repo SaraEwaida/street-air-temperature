@@ -121,6 +121,23 @@ class ScriptedProvider:
         return Turn("", [ToolCall(f"call_{self.i}_{j}", n, a) for j, (n, a) in enumerate(step)])
 
 
+# Groq's model list changes over time; prefer large models with reliable tool calling
+GROQ_PREFERENCE = ("gpt-oss-120b", "qwen3", "llama-4-maverick", "llama-3.3-70b", "kimi-k2", "gpt-oss-20b",
+                   "llama-4-scout")
+
+
+def pick_model(available: list[str]) -> str:
+    """First available model matching the preference list (substring match, so 'openai/gpt-oss-120b' fits)."""
+    chat = [m for m in available if not any(x in m for x in ("whisper", "tts", "guard", "embed", "playai"))]
+    for pref in GROQ_PREFERENCE:
+        hits = [m for m in chat if pref in m]
+        if hits:
+            return sorted(hits, key=len)[0]
+    if chat:
+        return chat[0]
+    raise RuntimeError(f"No chat model found among: {', '.join(available)}")
+
+
 def make_provider(name: str, model: str | None = None, base_url: str | None = None):
     if name == "anthropic":
         return AnthropicProvider(model or "claude-sonnet-5-5")
@@ -132,6 +149,11 @@ def make_provider(name: str, model: str | None = None, base_url: str | None = No
         key = os.environ.get("GROQ_API_KEY")
         if not key:
             raise RuntimeError("Set GROQ_API_KEY (free key, no credit card, from console.groq.com)")
-        return OpenAIProvider(model or "llama-3.3-70b-versatile", base_url or "https://api.groq.com/openai/v1",
-                              api_key=key, max_retries=8)
+        prov = OpenAIProvider("pending", base_url or "https://api.groq.com/openai/v1", api_key=key, max_retries=8)
+        available = sorted(m.id for m in prov.client.models.list().data)
+        if model and model not in available:
+            raise RuntimeError(f"Groq has no model {model!r}. Available: {', '.join(available)}")
+        prov.model = model or pick_model(available)
+        print(f"Using Groq model {prov.model}", flush=True)
+        return prov
     raise ValueError(f"Unknown provider {name!r}; use anthropic, openai, groq or ollama")

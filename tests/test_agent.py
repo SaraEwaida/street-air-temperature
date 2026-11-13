@@ -111,3 +111,14 @@ def test_openai_adapter_round_trip():
     assert sent[1]["messages"][-1] == {"role": "tool", "tool_call_id": "c1", "content": "{}"}
     assert sent[1]["messages"][-2]["tool_calls"] == [{"id": "c1", "type": "function"}]
     assert t2.text == "Done" and not t2.calls
+
+
+def test_pick_groq_model():
+    from streetair.agent.providers import pick_model
+
+    assert pick_model(["whisper-large-v3", "llama-3.1-8b-instant", "openai/gpt-oss-120b", "qwen/qwen3-32b"]) \
+        == "openai/gpt-oss-120b"
+    assert pick_model(["whisper-large-v3", "meta-llama/llama-guard-4-12b", "qwen/qwen3-32b"]) == "qwen/qwen3-32b"
+    assert pick_model(["some-new-model", "whisper-large-v3"]) == "some-new-model"
+    with pytest.raises(RuntimeError):
+        pick_model(["whisper-large-v3"])
