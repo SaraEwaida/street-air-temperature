@@ -54,9 +54,14 @@ def test_cells_cover_every_pixel():
 
 
 def test_support_mask_flags_extrapolation():
-    f = {"frac_built_500m": np.array([[0.2, 0.9]]), "ndvi_500m": np.array([[0.3, 0.3]])}
-    m = catalog.support_mask(f, {"frac_built_500m": (0.0, 0.75), "ndvi_500m": (0.05, 0.56)})
-    assert m.tolist() == [[True, False]]
+    f = {"frac_built_500m": np.array([[0.2, 0.9, 0.78]]), "ndvi_500m": np.array([[0.3, 0.3, np.nan]]),
+         "frac_water_500m": np.array([[0.04, 0.0, 0.0]])}
+    r = {"frac_built_500m": (0.0, 0.75), "ndvi_500m": (0.05, 0.56), "frac_water_500m": (0.0, 0.013)}
+    # 0.9 built is outside 0.75 + 0.05; 0.78 is within the margin; missing NDVI is not extrapolation;
+    # a little water (0.04) is within the absolute margin even though the stations span only 0-0.013
+    assert catalog.support_mask(f, r).tolist() == [[True, False, True]]
+    by = catalog.support_by_feature(f, r, np.ones((1, 3), bool)).set_index("feature")
+    assert by.loc["frac_built_500m", "land_share_in_range"] == pytest.approx(2 / 3, abs=1e-3)
 
 
 @pytest.fixture(scope="module")

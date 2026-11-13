@@ -166,8 +166,12 @@ def _catalog(cfg):
     land = np.isfinite(g["features"]["frac_water_100m"]) & (g["features"]["frac_water_100m"] <= cfg["catalog"]["water_threshold"])
     ranges = catalog.training_ranges(pd.read_csv(cfg["paths"]["features"]), pd.read_parquet(cfg["paths"]["dataset"]))
     elev_cell = e.groupby("station").era5_cell_elev_m.first().reindex(cells.station).to_numpy()
-    in_range = catalog.support_mask({**g["features"], "elev_minus_cell_m": g["features"]["elev_dem_m"] - elev_cell[cell_idx]},
-                                    ranges) & land
+    site = {**g["features"], "elev_minus_cell_m": g["features"]["elev_dem_m"] - elev_cell[cell_idx]}
+    in_range = catalog.support_mask(site, ranges) & land
+    by_feat = catalog.support_by_feature(site, ranges, land)
+    by_feat.to_csv(Path(cfg["paths"]["results_dir"]) / "catalog_support.csv", index=False)
+    print(f"Land pixels inside the training stations' range: {in_range[land].mean():.0%}. Most limiting features:")
+    print(by_feat.head(6).to_string(index=False))
     maps = {}
     for t in times:
         et = e[e.time == t]

@@ -10,7 +10,8 @@ Each item has three assets:
 - era5: the raw ERA5 value on the same grid, for comparison (degC)
 - correction: temperature minus ERA5 (degC)
 The collection has one static asset, `in_training_range`: 1 where every site feature lies
-inside the range spanned by the 15 training stations, 0 where the model extrapolates.
+inside the range spanned by the 15 training stations (plus an absolute margin), 0 where the
+model extrapolates.
 Water pixels (WorldCover water fraction within 100 m above a threshold) are nodata.
 """
 
@@ -75,13 +76,37 @@ def training_ranges(site_features: pd.DataFrame, dataset: pd.DataFrame) -> dict[
     return rng
 
 
-def support_mask(feats: dict[str, np.ndarray], ranges: dict[str, tuple[float, float]], tol: float = 0.05) -> np.ndarray:
+# Absolute margins around the training stations' range. A relative margin fails for features
+# that barely vary across 15 stations (water within 500 m spans 0-0.013): a pixel next to a canal
+# would count as extrapolation.
+MARGINS = {"frac": 0.05, "ndvi": 0.05, "elev_minus_cell_m": 25.0}
+
+
+def _margin(name: str) -> float:
+    return next((v for k, v in MARGINS.items() if name.startswith(k)), 0.0)
+
+
+def support_by_feature(feats: dict[str, np.ndarray], ranges: dict[str, tuple[float, float]],
+                       land: np.ndarray) -> pd.DataFrame:
+    """Share of land pixels inside each feature's training range (missing values count as inside)."""
+    rows = []
+    for k, (lo, hi) in ranges.items():
+        if k in feats:
+            v, pad = feats[k], _margin(k)
+            ok = ~np.isfinite(v) | ((v >= lo - pad) & (v <= hi + pad))
+            rows.append({"feature": k, "train_min": round(lo, 3), "train_max": round(hi, 3), "margin": pad,
+                         "land_share_in_range": round(float(ok[land].mean()), 3)})
+    return pd.DataFrame(rows).sort_values("land_share_in_range")
+
+
+def support_mask(feats: dict[str, np.ndarray], ranges: dict[str, tuple[float, float]]) -> np.ndarray:
+    """True where every site feature lies within the training stations' range plus an absolute margin.
+    Missing values (e.g. NDVI outside the Landsat scenes) are not counted as extrapolation."""
     ok = np.ones(next(iter(feats.values())).shape, bool)
     for k, (lo, hi) in ranges.items():
         if k in feats:
-            pad = tol * (hi - lo)
-            v = feats[k]
-            ok &= np.isfinite(v) & (v >= lo - pad) & (v <= hi + pad)
+            v, pad = feats[k], _margin(k)
+            ok &= ~np.isfinite(v) | ((v >= lo - pad) & (v <= hi + pad))
     return ok
 
 
