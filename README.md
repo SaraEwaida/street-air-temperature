@@ -4,7 +4,7 @@
 
 Estimating street-level 2 m **air** temperature in Phoenix from coarse ERA5 reanalysis (~25 km), land cover, vegetation and elevation, validated on weather stations the model never saw.
 
-**Status:** milestone 1 done: 15 stations, 120,617 station-hours, ERA5 and site features. Model, temperature catalog and API come next (see [Roadmap](#roadmap)).
+**Status:** milestone 2 done: LightGBM cuts ERA5's error at unseen stations by 19%. Temperature catalog and API come next. Model, temperature catalog and API come next (see [Roadmap](#roadmap)).
 
 Companion to [Urban-Heat-Downscaling](https://github.com/SaraEwaida/Urban-Heat-Downscaling), which downscales satellite **land surface** temperature. Surface temperature is the skin of roofs, roads and sand; air temperature at 2 m is what people feel. This project targets the second.
 
@@ -115,7 +115,32 @@ sat model configs/phoenix.yaml      # leave-one-station-out evaluation + final m
 
 ### Milestone 2 results
 
-To be filled after `sat model`.
+Every number is from stations the model never saw (leave one station out, 15 folds, 120,617 station-hours). Errors are prediction minus station, °C.
+
+| Method | MAE | RMSE | Bias | Night MAE | Day MAE | Mean absolute station offset |
+|---|---:|---:|---:|---:|---:|---:|
+| Raw ERA5 | 1.27 | 1.75 | +0.45 | 1.63 | 0.96 | 0.73 |
+| ERA5 + lapse rate | 1.41 | 1.90 | +0.84 | 1.76 | 1.10 | 0.96 |
+| ERA5 + constant offset | 1.26 | 1.72 | 0.00 | 1.62 | 0.94 | 0.68 |
+| Ridge | 1.14 | 1.51 | -0.01 | **1.26** | 1.04 | **0.26** |
+| **LightGBM** | **1.03** | **1.39** | -0.01 | 1.30 | **0.80** | 0.52 |
+
+"Mean absolute station offset" is the average, over held-out stations, of the size of each station's mean error: how well a method gets a place's typical warmth or coolness right.
+
+| Network | Raw ERA5 MAE | Ridge MAE | LightGBM MAE |
+|---|---:|---:|---:|
+| NOAA airports (76,899 h) | 1.12 | 1.05 | 1.03 |
+| AZMet turf and farmland (43,718 h) | 1.54 | 1.31 | **1.03** |
+
+![Error by hour](outputs/figures/error_by_hour.png)
+![Error by station](outputs/figures/error_by_station.png)
+
+- **LightGBM cuts the error at unseen stations by 19%** (1.27 to 1.03 °C) and removes the overall warm bias of ERA5.
+- **The gain is largest where ERA5 is worst:** irrigated and agricultural AZMet sites go from 1.54 to 1.03 °C, for example Phoenix Greenway 1.21 to 0.72 and Queen Creek 1.91 to 1.26.
+- **Ridge and LightGBM are good at different things.** Ridge is best at night and gets each station's typical offset far closer (0.26 vs 0.52 °C): with few stations, a smooth linear site effect generalises better than tree splits. LightGBM is clearly best by day, where the correction depends on weather and time. Combining the two is the obvious next step.
+- **A standard lapse-rate correction makes ERA5 worse.** At night cold air collects in the low parts of the basin, so lower is not warmer; a fixed -6.5 °C/km adjustment fails here.
+- **Most important LightGBM features:** built-up fraction within 100 m (20% of gain), ERA5 humidity (9%), hour of day (7%), height relative to the ERA5 cell (7%), built-up within 500 m (6%), solar radiation (6%).
+- **Not uniform across stations.** LightGBM is worse than raw ERA5 at three west-side airports (Luke, Glendale, Goodyear) and Ridge at Deer Valley and Desert Ridge. With 15 stations, per-station results are noisy, and more stations (or more years) are the main way to firm them up.
 
 ## Roadmap
 
