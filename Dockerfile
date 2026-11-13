@@ -8,9 +8,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     SAT_CONFIG=configs/phoenix.yaml
 
-# LightGBM needs the OpenMP runtime
+# LightGBM needs the OpenMP runtime; rasterio's bundled GDAL needs expat
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libgomp1 \
+    && apt-get install -y --no-install-recommends libgomp1 libexpat1 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
