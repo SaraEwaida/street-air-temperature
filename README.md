@@ -259,6 +259,30 @@ Design choices that make the agent safe to run unattended:
 - **Comparable, fast runs.** Every experiment uses the same rows (every 3rd hour of the station table, configurable) and the same leave-one-station-out folds, so a study of 8 runs takes minutes.
 - **Provider-agnostic.** Groq's free tier (Llama 3.3 70B), a local model through Ollama, Claude or OpenAI. Rate limits on free tiers are handled by waiting and retrying, and tool results are kept short to stay within token limits. Tests run the whole loop with a scripted provider and check both API adapters against their message formats, so CI never calls a model.
 
+### First real runs, reviewed
+
+Run with `openai/gpt-oss-120b` on Groq's free tier, 15 stations, every 3rd hour (about 37,000 training rows per fold). Raw ERA5 MAE on these rows is 1.286 °C.
+
+| Experiment | MAE (°C) | Night | Day |
+|---|---:|---:|---:|
+| baseline (num_leaves 15, min_child_samples 2000) | 1.065 | 1.357 | 0.816 |
+| num_leaves 31 (also 63, 127 in an earlier run) | 1.065 | 1.357 | 0.816 |
+| min_child_samples 100 | **1.034** | **1.317** | **0.792** |
+| n_estimators 800 | 1.046 | 1.331 | 0.803 |
+| without land cover (min_child_samples 2000) | 1.144 | 1.496 | 0.843 |
+| without vegetation (min_child_samples 100) | 1.042 | 1.330 | 0.796 |
+| without time (min_child_samples 100) | 1.061 | 1.355 | 0.810 |
+| without weather (min_child_samples 100) | 1.111 | 1.439 | 0.832 |
+
+What the agent found, and what checking its report against the logs showed:
+
+- **Right:** `min_child_samples` was the binding setting. At 2000 with about 37,000 rows a tree cannot grow beyond about 18 leaves, so raising `num_leaves` changed nothing; lowering it to 100 gave the best result, mostly at night. Land cover is the most important feature group.
+- **Wrong comparisons:** the vegetation, time and weather ablations used `min_child_samples=100`, but the agent compared them with the baseline at 2000. Against the matching run (1.034), dropping time costs +0.027 °C (it called this noise) and dropping weather +0.077 °C (it reported +0.046). The land-cover ablation kept 2000, so it is not comparable with the other three.
+- **Inconsistent:** 800 trees improved MAE by 0.019 °C, above the agent's own noise threshold, yet it reported no clear benefit and never combined 800 trees with `min_child_samples=100`. It also miscounted its experiments (7 instead of 8).
+- **Process:** it wrote the report as its final message instead of calling `write_report`; the fallback still saved it.
+
+Changes made in response: the system prompt now requires every comparison to be against a run that differs only in the one change, and the loop reminds the agent once to call `write_report` if it ends without it. The results tables in each report are generated from the logs, which is what made these errors easy to catch.
+
 ## Roadmap
 
 1. Station data pipeline: stations, QC, ERA5, site features, joined table.

@@ -62,8 +62,18 @@ def test_bad_inputs_are_errors_not_crashes(toolbox):
 
 
 def test_report_is_written_even_if_agent_forgets(toolbox):
-    res = run_agent(ScriptedProvider([[("check_data", {})]], final_text="I am done."), toolbox, verbose=False)
+    prov = ScriptedProvider([[("check_data", {})]], final_text="I am done.")
+    res = run_agent(prov, toolbox, verbose=False)
+    assert len(prov.reminders) == 1                                     # reminded once, then gave up
     assert len(res["reports"]) == 1 and "no report written" in open(res["reports"][0], encoding="utf-8").read()
+
+
+def test_reminder_gets_the_report_written(toolbox):
+    """A model that answers with text first and calls write_report only after the reminder."""
+    prov = ScriptedProvider([[("check_data", {})], [], [("write_report", {"title": "T", "markdown": "Body"})]])
+    res = run_agent(prov, toolbox, verbose=False)
+    assert len(prov.reminders) == 1 and len(res["reports"]) == 1
+    assert "no report written" not in open(res["reports"][0], encoding="utf-8").read()
 
 
 # ---------------------------------------------------------------- provider adapters with fake clients

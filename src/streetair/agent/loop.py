@@ -16,7 +16,9 @@ Work like a careful ML engineer:
 1. Call check_data first and note any issues.
 2. Run a baseline with default settings before changing anything.
 3. Change one thing at a time so each result is interpretable (one hyperparameter, or one feature group \
-dropped). State the rationale for each run.
+dropped). State the rationale for each run. Every comparison must be against an experiment that differs \
+ONLY in that one change: if you adopt new hyperparameters, run ablations with those same hyperparameters \
+and compare them with the matching run, not with the original baseline. Quote deltas against that run.
 4. Differences under about 0.01 C in MAE are within noise for this setup; do not over-interpret them. \
 Look at night and day separately, and at the per-network breakdown, not only overall MAE.
 5. If a change gives exactly the same result as the baseline, find out why before moving on: it may \
@@ -36,11 +38,24 @@ DEFAULT_GOAL = ("Run a small hyperparameter and feature study for the LightGBM c
                 "groups matter by leaving each important group out. Recommend a configuration and write the report.")
 
 
+REMINDER = ("You ended without calling write_report. Call write_report now with your report as the markdown "
+            "argument; do not run more experiments.")
+
+
 def run_agent(provider, toolbox: Toolbox, goal: str = DEFAULT_GOAL, max_steps: int = 30,
               verbose: bool = True) -> dict[str, Any]:
     turn = provider.start(SYSTEM, Toolbox.SPECS, goal)
-    steps = 0
-    while turn.calls and steps < max_steps:
+    steps, reminded = 0, False
+    while steps < max_steps:
+        if not turn.calls:
+            if toolbox.reports or reminded:
+                break
+            # Some models write the report as their final message instead of calling the tool: remind once
+            reminded = True
+            if verbose:
+                print("[loop] no report written yet; reminding the agent", flush=True)
+            turn = provider.remind(REMINDER)
+            continue
         steps += 1
         if verbose and turn.text.strip():
             print(f"[agent] {turn.text.strip()}", flush=True)

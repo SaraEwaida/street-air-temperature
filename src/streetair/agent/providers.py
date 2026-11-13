@@ -46,6 +46,10 @@ class AnthropicProvider:
             {"type": "tool_result", "tool_use_id": c.id, "content": text, "is_error": err} for c, text, err in results]})
         return self._send()
 
+    def remind(self, text: str) -> Turn:
+        self.messages.append({"role": "user", "content": text})
+        return self._send()
+
     def _send(self) -> Turn:
         r = self.client.messages.create(model=self.model, max_tokens=self.max_tokens, system=self.system,
                                         tools=self.tools, messages=self.messages)
@@ -83,6 +87,10 @@ class OpenAIProvider:
             self.messages.append({"role": "tool", "tool_call_id": c.id, "content": text})
         return self._send()
 
+    def remind(self, text: str) -> Turn:
+        self.messages.append({"role": "user", "content": text})
+        return self._send()
+
     def _send(self) -> Turn:
         r = self.client.chat.completions.create(model=self.model, messages=self.messages, tools=self.tools)
         msg = r.choices[0].message
@@ -111,6 +119,10 @@ class ScriptedProvider:
 
     def reply(self, results) -> Turn:
         self.received.append([(c.name, json.loads(text), err) for c, text, err in results])
+        return self._next()
+
+    def remind(self, text: str) -> Turn:
+        self.reminders = getattr(self, "reminders", []) + [text]
         return self._next()
 
     def _next(self) -> Turn:
