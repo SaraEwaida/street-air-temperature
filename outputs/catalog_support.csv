@@ -1,8 +1,8 @@
 feature,train_min,train_max,margin,land_share_in_range
 frac_shrub_100m,0.0,0.278,0.05,0.546
 frac_shrub_500m,0.003,0.445,0.05,0.633
-elev_minus_cell_m,-146.414,33.552,25.0,0.847
 frac_built_100m,0.0,0.722,0.05,0.863
+elev_minus_cell_m,-146.414,33.552,25.0,0.874
 frac_tree_100m,0.0,0.089,0.05,0.905
 frac_bare_500m,0.01,0.511,0.05,0.911
 frac_built_500m,0.043,0.731,0.05,0.92
