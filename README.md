@@ -217,6 +217,17 @@ Then open http://localhost:8000/docs for the interactive documentation.
 | `GET /health` | service status, grid size, number of model features |
 | `GET /catalog` | the STAC collection of the 100 m maps |
 
+**Example: four places at 05:00 on 15 July 2023** (from `/temperature`, °C):
+
+| Place | lat, lon | ERA5 | Correction | Street-level | Inside area of applicability |
+|---|---|---:|---:|---:|---|
+| Downtown Phoenix | 33.4484, -112.074 | 32.96 | +1.24 | **34.20** | no: 84% built-up within 500 m, denser than any station (DI 0.95) |
+| Encanto park | 33.479, -112.096 | 32.92 | -1.22 | 31.69 | yes (DI 0.06; a training station site) |
+| South Mountain desert | 33.33, -112.06 | 33.17 | -2.03 | 31.14 | no: shrubland 332 m above its ERA5 cell (DI 1.92) |
+| Queen Creek farmland | 33.19, -111.53 | 30.97 | -2.10 | **28.88** | yes (DI 0.18; a training station site) |
+
+ERA5 puts these places within about 2 °C of each other; after correction they span 5.3 °C, from the dense core to irrigated farmland. Two of the points are training station sites, so their answers are in-sample; the accuracy to expect at a new place is the leave-one-station-out figure (MAE about 1.0 °C). Downtown and the desert slope are flagged because no station resembles them.
+
 - Times without a timezone are read as Phoenix local time (MST, UTC-7) and rounded to the hour.
 - Points outside the mapped area, on water, or at hours not yet in the ERA5 archive (which lags real time by several days) return HTTP 422 with an explanation.
 - CI builds the Docker image on every push and checks that the API loads inside it.
