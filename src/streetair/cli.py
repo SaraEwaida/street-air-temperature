@@ -170,7 +170,14 @@ def _catalog(cfg):
     in_range = catalog.support_mask(site, ranges) & land
     by_feat = catalog.support_by_feature(site, ranges, land)
     by_feat.to_csv(Path(cfg["paths"]["results_dir"]) / "catalog_support.csv", index=False)
-    print(f"Land pixels inside the training stations' range: {in_range[land].mean():.0%}. Most limiting features:")
+    f = g["features"]
+    zones = {"urban (built-up >= 30% within 500 m)": land & (f["frac_built_500m"] >= 0.3),
+             "farmland (grass/crop >= 30% within 500 m)": land & (f["frac_grass_crop_500m"] >= 0.3),
+             "natural desert (shrub >= 50% within 500 m)": land & (f["frac_shrub_500m"] >= 0.5)}
+    print(f"Land pixels inside the training stations' range: {in_range[land].mean():.0%}")
+    for name, z in zones.items():
+        print(f"  {name}: {z.sum() / land.sum():.0%} of land, {in_range[z].mean() if z.any() else 0:.0%} in range")
+    print("Most limiting features:")
     print(by_feat.head(6).to_string(index=False))
     maps = {}
     for t in times:
