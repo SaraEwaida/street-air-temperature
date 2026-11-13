@@ -146,3 +146,21 @@ def test_unicode_report_and_unexpected_errors(toolbox, monkeypatch):
     assert err and "ZeroDivisionError" in json.loads(text)["error"]
     out = json.loads(toolbox.call("run_experiment", {"name": "a", "rationale": "x"})[0])
     assert out["effective_params"]["num_leaves"] == CFG["model"]["lightgbm"]["num_leaves"] and out["train_rows_per_fold"] > 0
+
+
+def test_stops_after_report_and_survives_provider_errors(toolbox):
+    class Failing(ScriptedProvider):
+        def reply(self, results):
+            if len(self.received) >= 1:
+                raise RuntimeError("413 request too large")
+            return super().reply(results)
+
+    # report written -> loop ends without another request, even though more steps are scripted
+    prov = ScriptedProvider([[("write_report", {"title": "R", "markdown": "x"})], [("check_data", {})]])
+    res = run_agent(prov, toolbox, verbose=False)
+    assert res["steps"] == 1 and prov.received == []
+    # provider fails mid-session -> no crash, a report is still written
+    fresh = Toolbox(CFG, make_data(n_st=4, days=3), toolbox.out.parent / "agent2", max_experiments=2, hour_stride=2)
+    prov = Failing([[("check_data", {})], [("check_data", {})], [("check_data", {})]])
+    res = run_agent(prov, fresh, verbose=False)
+    assert len(res["reports"]) == 1 and "413" in open(res["reports"][0], encoding="utf-8").read()

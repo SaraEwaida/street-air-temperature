@@ -283,6 +283,25 @@ What the agent found, and what checking its report against the logs showed:
 
 Changes made in response: the system prompt now requires every comparison to be against a run that differs only in the one change, and the loop reminds the agent once to call `write_report` if it ends without it. The results tables in each report are generated from the logs, which is what made these errors easy to catch.
 
+**Second run, after those changes** ([report](outputs/agent/reports/20261113-110246-lightgbm-era5-street-level-temperature-correction-phoenix-hy.md)). The agent now ran every ablation with the tuned settings (`num_leaves=31`, `min_child_samples=100`, MAE 1.018 °C) and quoted deltas against that run; all of its deltas check out against the logs:
+
+| Without | MAE (°C) | Change vs tuned | Night change |
+|---|---:|---:|---:|
+| land cover | 1.137 | +0.119 | +0.236 |
+| elevation | 1.052 | +0.034 | +0.020 |
+| time | 1.048 | +0.030 | +0.049 |
+| vegetation | 1.001 | **-0.017** | -0.021 |
+
+Remaining problems in its conclusions:
+
+- **It contradicts its own table on vegetation.** Dropping vegetation gave the best run (1.001), an improvement above the agent's own 0.01 °C noise threshold, yet it calls this noise and recommends keeping all features. The supportable conclusion is that NDVI adds nothing once land cover is present and may slightly hurt; worth confirming over several seeds.
+- **An untested claim:** "no gain beyond 31 leaves"; with `min_child_samples=100` it never tried more than 31.
+- **A suggestion already in place:** sine/cosine time encodings, which the model already uses.
+
+**Human decision from both runs:** the tuned settings (`num_leaves=31`, `min_child_samples=100`) cut MAE from 1.065 to 1.018 °C on the subsampled rows; land cover is by far the most important feature group, especially at night. Before adopting them, the full leave-one-station-out evaluation should be rerun on all hours, and the vegetation result checked across seeds.
+
+The agent now also stops as soon as the report is written (one extra request after the report exceeded the free tier's 8,000-token limit in the second run) and ends cleanly on provider errors, keeping all results.
+
 ## Roadmap
 
 1. Station data pipeline: stations, QC, ERA5, site features, joined table.

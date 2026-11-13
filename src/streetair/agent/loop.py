@@ -67,7 +67,15 @@ def run_agent(provider, toolbox: Toolbox, goal: str = DEFAULT_GOAL, max_steps: i
             if verbose:
                 print(f"     {toolbox.log[-1]['summary']}", flush=True)
             results.append((c, text, err))
-        turn = provider.reply(results)
+        if any(c.name == "write_report" and not err for c, _, err in results):
+            break                     # the report is the last step: no further request (saves tokens on free tiers)
+        try:
+            turn = provider.reply(results)
+        except Exception as e:  # noqa: BLE001 - keep everything already done, end the session cleanly
+            if verbose:
+                print(f"[loop] provider error, stopping: {type(e).__name__}: {e}", flush=True)
+            turn = type(turn)(text=f"Session ended by a provider error: {type(e).__name__}: {e}")
+            break
     if verbose and turn.text.strip():
         print(f"[agent] {turn.text.strip()}", flush=True)
     if not toolbox.reports:           # always leave a record, even if the model never wrote one
