@@ -23,6 +23,18 @@ features:
   ndvi_max_cloud: 10
   ndvi_scenes: 5                          # median NDVI over up to 5 clear Landsat scenes
 
+# Milestone 2: ERA5 correction, evaluated leave-one-station-out
+model:
+  ridge_alpha: 10
+  lightgbm:
+    n_estimators: 400
+    learning_rate: 0.05
+    num_leaves: 15
+    min_child_samples: 2000     # large leaves: only ~14 distinct sites per fold, avoid memorising them
+    feature_fraction: 0.8
+    bagging_fraction: 0.8
+    seed: 0
+
 paths:
   stations: data/phoenix/stations.csv
   observations: data/phoenix/observations.parquet
@@ -31,3 +43,6 @@ paths:
   dataset: data/phoenix/dataset.parquet
   station_summary: outputs/station_summary.csv
   station_map: outputs/figures/phoenix_stations.png
+  oof: data/phoenix/predictions_loso.parquet
+  model_lightgbm: data/phoenix/models/lightgbm.txt
+  results_dir: outputs

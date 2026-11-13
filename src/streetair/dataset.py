@@ -11,8 +11,19 @@ LOCAL_TZ = "America/Phoenix"     # MST all year, no daylight saving
 LAPSE_RATE_C_PER_M = -0.0065     # standard atmosphere, for the elevation-corrected baseline
 
 
+def era5_context(era5: pd.DataFrame) -> pd.DataFrame:
+    """Add ERA5-only context, computed on the complete hourly series before joining with stations:
+    3-hour temperature change (cooling or warming rate) and the local-day mean."""
+    e = era5.sort_values(["station", "time"]).copy()
+    g = e.groupby("station").t_era5
+    e["t_era5_change_3h"] = g.diff(3)
+    day = e.time.dt.tz_convert(LOCAL_TZ).dt.date
+    e["t_era5_day_mean"] = e.groupby(["station", day]).t_era5.transform("mean")
+    return e
+
+
 def build(obs: pd.DataFrame, era5: pd.DataFrame, stations: pd.DataFrame, feats: pd.DataFrame) -> pd.DataFrame:
-    df = obs.merge(era5, on=["station", "time"], how="inner")
+    df = obs.merge(era5_context(era5), on=["station", "time"], how="inner")
     cols = [c for c in ("station", "name", "icao", "network", "lat", "lon", "elev_m") if c in stations]
     df = df.merge(stations[cols], on="station", how="left")
     df = df.merge(feats, on="station", how="left")
@@ -23,7 +34,8 @@ def build(obs: pd.DataFrame, era5: pd.DataFrame, stations: pd.DataFrame, feats: 
     df["is_night"] = ~df.hour_local.between(7, 18)
     # Elevation-corrected ERA5: move the grid-cell temperature to the station's height
     elev = df.elev_dem_m.fillna(df.elev_m)
-    df["t_era5_elev"] = df.t_era5 + LAPSE_RATE_C_PER_M * (elev - df.era5_cell_elev_m)
+    df["elev_minus_cell_m"] = elev - df.era5_cell_elev_m
+    df["t_era5_elev"] = df.t_era5 + LAPSE_RATE_C_PER_M * df.elev_minus_cell_m
     df["era5_minus_obs"] = df.t_era5 - df.t_obs
     return df.sort_values(["station", "time"]).reset_index(drop=True)
 

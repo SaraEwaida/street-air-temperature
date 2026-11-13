@@ -89,10 +89,38 @@ Overall: bias +0.45 °C, MAE 1.27 °C.
 - **Without AZMet this was invisible:** airports alone span too narrow a range of surroundings. With 15 stations these correlations are a strong hint, not a result; testing on held-out stations in milestone 2 decides how much of it a model can use.
 - Desert Ridge lost 42 hours to the range check, probably a sensor fault; every other station lost fewer than 3 hours to quality control.
 
+## Reproduce milestone 2
+
+ERA5 now also includes wind, cloud cover, sunshine and humidity, so re-run the ERA5 and build steps once:
+
+```bash
+sat era5 configs/phoenix.yaml
+sat build configs/phoenix.yaml
+sat model configs/phoenix.yaml      # leave-one-station-out evaluation + final model
+```
+
+### Model setup
+
+- **Target:** station temperature minus raw ERA5. Every method predicts the station temperature, so all are scored on the same scale.
+- **Validation: leave one station out.** Each of the 15 stations is held out in turn; models, imputers and scalers are fitted on the other 14 only. This answers the real question: how well does the correction work at a place with no station?
+- **Methods:**
+  - raw ERA5;
+  - ERA5 moved to the station's elevation with a standard lapse rate;
+  - ERA5 plus the training stations' mean offset;
+  - Ridge regression on the features, with site x night interactions;
+  - LightGBM on the same features.
+- **Features:** land-cover fractions and NDVI within 100 m and 500 m, height relative to the ERA5 cell, hour of day and day of year (as sine and cosine), and ERA5 weather at that hour (temperature, 3-hour change, daily mean, wind, cloud cover, solar radiation, humidity). No station coordinates or names, so a held-out station is predicted only from its surroundings and the weather.
+- **Setting:** reconstruction of past hours. The ERA5 daily mean uses the whole day, which is fine for historical maps but not for real-time use.
+- **Outputs:** `outputs/model_summary.csv` (overall, night and day, and per network), `model_by_station.csv`, `model_by_hour.csv`, `model_importance.csv`, and figures `error_by_hour.png`, `error_by_station.png`.
+
+### Milestone 2 results
+
+To be filled after `sat model`.
+
 ## Roadmap
 
-1. Station data pipeline: stations, QC, ERA5, site features, joined table (this milestone).
-2. Model: LightGBM correction to ERA5, validated by leaving whole stations out; baselines raw ERA5 and lapse-rate ERA5; errors by hour of day and season.
+1. Station data pipeline: stations, QC, ERA5, site features, joined table.
+2. Model: Ridge and LightGBM corrections to ERA5, validated by leaving whole stations out, against raw, lapse-rate and constant-offset ERA5; errors by hour of day, station and network (this milestone).
 3. Temperature catalog: 100 m air-temperature maps as Cloud-Optimised GeoTIFFs, indexed in a STAC catalog.
 4. Service: FastAPI endpoint (location and time in, temperature out) in Docker.
 5. Results and limitations write-up.
@@ -106,8 +134,9 @@ src/streetair/
   azmet.py             AZMet station table and hourly API
   era5.py              Open-Meteo ERA5 request and parsing
   features.py          site features from Planetary Computer (windowed reads)
-  dataset.py           station-hour table, lapse-rate baseline, station summary
-  plots.py             station map
+  dataset.py           station-hour table, ERA5 context, lapse-rate baseline, station summary
+  model.py             leave-one-station-out evaluation, Ridge and LightGBM, final model
+  plots.py             station map, error by hour, error by station
   cli.py               `sat` command
 tests/                 fixtures in the real formats; no network needed
 ```

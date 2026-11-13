@@ -13,6 +13,15 @@ import pandas as pd
 
 ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 
+# Weather context for the urban heat island, which is strongest on calm, clear nights.
+# Available from ERA5 everywhere, so the model can use them anywhere in the city.
+EXTRA_VARS = {
+    "wind_speed_10m": "era5_wind_ms",
+    "cloud_cover": "era5_cloud_pct",
+    "shortwave_radiation": "era5_sw_wm2",
+    "relative_humidity_2m": "era5_rh_pct",
+}
+
 
 def build_params(stations: pd.DataFrame, cfg: dict[str, Any]) -> dict[str, str]:
     e = cfg["era5"]
@@ -21,7 +30,8 @@ def build_params(stations: pd.DataFrame, cfg: dict[str, Any]) -> dict[str, str]:
         "longitude": ",".join(f"{v:.5f}" for v in stations.lon),
         "start_date": cfg["period"]["start"],
         "end_date": cfg["period"]["end"],
-        "hourly": "temperature_2m",
+        "hourly": ",".join(["temperature_2m", *EXTRA_VARS]),
+        "wind_speed_unit": "ms",
         "models": e["model"],
         "timezone": "GMT",
     }
@@ -38,12 +48,16 @@ def parse_response(payload: Any, stations: pd.DataFrame) -> pd.DataFrame:
     frames = []
     for st, item in zip(stations.station, items):
         h = item["hourly"]
-        frames.append(pd.DataFrame({
+        f = pd.DataFrame({
             "station": st,
             "time": pd.to_datetime(h["time"], utc=True),
             "t_era5": pd.to_numeric(pd.Series(h["temperature_2m"]), errors="coerce"),
             "era5_cell_elev_m": item.get("elevation"),
-        }))
+        })
+        for var, col in EXTRA_VARS.items():
+            if var in h:
+                f[col] = pd.to_numeric(pd.Series(h[var]), errors="coerce").to_numpy()
+        frames.append(f)
     return pd.concat(frames, ignore_index=True).dropna(subset=["t_era5"])
 
 

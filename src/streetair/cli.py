@@ -1,4 +1,4 @@
-"""Command line: sat stations | era5 | features | build | map | all."""
+"""Command line: sat stations | era5 | features | build | map | model | all."""
 
 from __future__ import annotations
 
@@ -100,7 +100,34 @@ def _map(cfg):
     print(f"Saved {out}")
 
 
-STEPS = {"stations": _stations, "era5": _era5, "features": _features, "build": _build, "map": _map}
+def _model(cfg):
+    from . import model
+    from .plots import error_by_hour, error_by_station
+
+    df = pd.read_parquet(cfg["paths"]["dataset"])
+    print(f"Leave-one-station-out over {df.station.nunique()} stations, {len(df):,} station-hours")
+    oof = model.leave_one_station_out(df, cfg)
+    oof.to_parquet(cfg["paths"]["oof"], index=False)
+    res = model.summarise(oof)
+    out = Path(cfg["paths"]["results_dir"])
+    out.mkdir(parents=True, exist_ok=True)
+    for name, table in res.items():
+        table.to_csv(out / f"model_{name}.csv", index=False)
+    gbm, features, imp = model.fit_final(df, cfg)
+    model.save_final(gbm, features, cfg["paths"]["model_lightgbm"])
+    imp.to_csv(out / "model_importance.csv", index=False)
+    error_by_hour(res["by_hour"], out / "figures" / "error_by_hour.png")
+    error_by_station(res["by_station"], out / "figures" / "error_by_station.png")
+    s = res["summary"]
+    print(s[s.method.isin(model.METHODS)][["method", "mae_c", "rmse_c", "bias_c", "mae_night_c", "mae_day_c",
+                                          "station_bias_abs_mean_c"]].to_string(index=False))
+    print(s[~s.method.isin(model.METHODS)][["method", "n", "mae_c", "bias_c"]].to_string(index=False))
+    print("Top LightGBM features: " + ", ".join(f"{r.feature} {r.gain_share:.0%}" for r in imp.head(6).itertuples()))
+    print(f"Saved {out}/model_*.csv, figures, and {cfg['paths']['model_lightgbm']}")
+
+
+STEPS = {"stations": _stations, "era5": _era5, "features": _features, "build": _build, "map": _map,
+         "model": _model}
 
 
 def main(argv: list[str] | None = None) -> None:

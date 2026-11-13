@@ -88,3 +88,58 @@ def station_map(summary: pd.DataFrame, stations: pd.DataFrame, cfg: dict[str, An
     fig.savefig(out, dpi=150, bbox_inches="tight")
     plt.close(fig)
     return out
+
+
+METHOD_STYLE = {   # fixed colour per method, same in every figure
+    "era5_raw": ("Raw ERA5", "#7f7f7f", "-"),
+    "era5_lapse": ("ERA5 + lapse rate", "#7f7f7f", ":"),
+    "era5_bias": ("ERA5 + constant offset", "#a6761d", "--"),
+    "ridge": ("Ridge", "#1b6ca8", "-"),
+    "lightgbm": ("LightGBM", "#d95f02", "-"),
+}
+
+
+def error_by_hour(by_hour: pd.DataFrame, out: str | Path) -> Path:
+    fig, ax = plt.subplots(figsize=(8.5, 4.2))
+    for m, (label, color, ls) in METHOD_STYLE.items():
+        g = by_hour[by_hour.method == m].sort_values("hour_local")
+        if len(g):
+            ax.plot(g.hour_local, g.mae_c, color=color, ls=ls, lw=2, label=label)
+    ax.axvspan(-0.5, 6.5, color="#eeeeee", zorder=0)
+    ax.axvspan(18.5, 23.5, color="#eeeeee", zorder=0)
+    ax.set_xlim(-0.5, 23.5)
+    ax.set_xticks(range(0, 24, 3))
+    ax.set_xlabel("Hour of day (MST); shaded = night")
+    ax.set_ylabel("MAE on held-out stations (°C)")
+    ax.set_ylim(bottom=0)
+    ax.grid(axis="y", color="#dddddd", lw=0.8)
+    ax.spines[["top", "right"]].set_visible(False)
+    ax.legend(fontsize=8, frameon=False, ncol=2)
+    ax.set_title("Leave-one-station-out error by hour, Phoenix 2023", loc="left", fontsize=11)
+    out = Path(out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    return out
+
+
+def error_by_station(by_station: pd.DataFrame, out: str | Path, methods=("era5_raw", "ridge", "lightgbm")) -> Path:
+    piv = by_station.pivot_table(index=["icao", "network"], columns="method", values="mae_c").reset_index()
+    piv = piv.sort_values(["network", methods[0]], ascending=[False, False])
+    y = np.arange(len(piv))
+    h = 0.8 / len(methods)
+    fig, ax = plt.subplots(figsize=(7.5, 0.5 * len(piv) + 1.2))
+    for i, m in enumerate(methods):
+        label, color, _ = METHOD_STYLE[m]
+        ax.barh(y + (i - (len(methods) - 1) / 2) * h, piv[m], height=h - 0.03, color=color, label=label)
+    ax.set_yticks(y, [f"{a} ({'AZMet' if n == 'azmet' else 'NOAA'})" for a, n in zip(piv.icao, piv.network)], fontsize=8)
+    ax.invert_yaxis()
+    ax.set_xlabel("MAE when the station is held out (°C)")
+    ax.grid(axis="x", color="#dddddd", lw=0.8)
+    ax.spines[["top", "right"]].set_visible(False)
+    ax.legend(fontsize=8, frameon=False, loc="lower right")
+    out = Path(out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    return out
