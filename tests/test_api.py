@@ -107,6 +107,8 @@ def test_area_of_applicability_and_errors(env):
     assert svc.predict(float(lat[r, c]), float(lon[r, c]), "2023-07-15T05:00")["in_area_of_applicability"] is True
     with pytest.raises(service.PointError, match="outside"):
         svc.predict(40.0, -100.0, "2023-07-15T05:00")
+    with pytest.raises(service.PointError, match="Did you mean lon=-112.07"):
+        svc.predict(33.45, 112.07, "2023-07-15T05:00")
     with pytest.raises(service.PointError, match="water"):
         svc.predict(float(lat[155, 155]), float(lon[155, 155]), "2023-07-15T05:00")
 

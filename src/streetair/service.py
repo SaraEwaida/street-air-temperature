@@ -89,7 +89,9 @@ class Service:
 
         lon0, lat0, lon1, lat1 = self.cfg["bbox"]
         if not (lon0 <= lon <= lon1 and lat0 <= lat <= lat1):
-            raise PointError(f"({lat}, {lon}) is outside the mapped area {self.cfg['bbox']} (lon/lat)")
+            hint = (f" Did you mean lon={-lon}? Longitudes west of Greenwich are negative."
+                    if lon0 <= -lon <= lon1 and lat0 <= lat <= lat1 else "")
+            raise PointError(f"({lat}, {lon}) is outside the mapped area {self.cfg['bbox']} (lon/lat).{hint}")
         return {k: float(v[0]) for k, v in sample_at(self.grid, np.array([lon]), np.array([lat])).items()}
 
     def dissimilarity(self, lon: float, lat: float) -> float | None:
